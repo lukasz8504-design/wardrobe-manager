@@ -1,0 +1,6 @@
+# Wardrobe Manager - Python Dependencies
+# Tkinter is built-in with Python, no additional packages required
+# This file is provided for future extensions
+
+# No external dependencies needed for the basic version
+# Tkinter comes with Python by default
