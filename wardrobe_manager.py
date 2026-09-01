@@ -35,14 +35,18 @@ class WardrobeManager:
         self.orange_text = self.config.get('COLORS', 'orange_text')
         self.red_text = self.config.get('COLORS', 'red_text')
         
+        # Wygląd
+        self.square_width = self.config.getint('APPEARANCE', 'square_width')
+        self.square_height = self.config.getint('APPEARANCE', 'square_height')
+        self.square_font_size = self.config.getint('APPEARANCE', 'square_font_size')
+        
         # Pliki
         self.history_file = self.config.get('FILES', 'history_file')
         self.state_file = self.config.get('FILES', 'state_file')
         
-        # Maksymalizuj okno na pełny ekran
+        # Maksymalizuj okno
         self.root.state('zoomed')  # Windows
         self.root.resizable(True, True)
-        self.root.bind('<Configure>', self.on_window_resize)
         
         # Stan timera - osobny timer dla każdego kwadratu
         self.square_timers = {}  # {pos_key: remaining_time_in_seconds}
@@ -73,52 +77,31 @@ class WardrobeManager:
         self.square_entry.bind('<Return>', lambda e: self.input_square())
         
         tk.Button(top_frame, text="Potwierdź", command=self.input_square, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
-        tk.Button(top_frame, text="Wyczyść wszytko", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+        tk.Button(top_frame, text="Wyczyść wszystko", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         
         # Status
         self.status_label = tk.Label(top_frame, text="Czekam na numer kwadratu...", 
                                      bg='lightyellow', font=('Arial', 10), relief=tk.SUNKEN, bd=1)
         self.status_label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
         
-        # Środkowa część - Półki z kanwą z scrollbarem
-        canvas_frame = tk.Frame(main_frame, bg='white')
-        canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Canvas z scrollbarem
-        self.canvas = tk.Canvas(canvas_frame, bg='white', highlightthickness=0)
-        scrollbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.canvas.yview)
-        self.scrollable_frame = tk.Frame(self.canvas, bg='white')
-        
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-        
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=scrollbar.set)
-        
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Bind mouse wheel
-        self.canvas.bind_all("<MouseWheel>", self.on_mousewheel)
-        self.canvas.bind_all("<Button-4>", self.on_mousewheel)
-        self.canvas.bind_all("<Button-5>", self.on_mousewheel)
+        # Środkowa część - Półki bez scrollbara
+        shelves_frame = tk.Frame(main_frame, bg='white')
+        shelves_frame.pack(fill=tk.BOTH, expand=True)
         
         self.shelf_buttons = {}
         
         for shelf_idx in range(self.num_shelves):
-            shelf_label = tk.Label(self.scrollable_frame, text=f"Półka {shelf_idx + 1}", 
-                                   bg='white', font=('Arial', 12, 'bold'))
-            shelf_label.pack(pady=10)
+            shelf_label = tk.Label(shelves_frame, text=f"Półka {shelf_idx + 1}", 
+                                   bg='white', font=('Arial', 10, 'bold'))
+            shelf_label.pack(pady=5)
             
-            shelf_frame = tk.Frame(self.scrollable_frame, bg='lightgray', relief=tk.RAISED, bd=2)
-            shelf_frame.pack(fill=tk.X, padx=10, pady=5)
+            shelf_frame = tk.Frame(shelves_frame, bg='lightgray', relief=tk.RAISED, bd=2)
+            shelf_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
             
             # Każda półka ma 2 wiersze (jeden na drugim) i 1 kolumnę
             for row_idx in range(self.num_rows):
                 row_frame = tk.Frame(shelf_frame, bg='lightgray')
-                row_frame.pack(fill=tk.X, padx=5, pady=5)
+                row_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
                 
                 for col_idx in range(self.num_columns):
                     # Kontener na kwadraty (dwa na sobie)
@@ -130,12 +113,12 @@ class WardrobeManager:
                         square_btn = tk.Button(
                             section_frame, 
                             text="", 
-                            font=('Arial', 16, 'bold'),
+                            font=('Arial', self.square_font_size, 'bold'),
                             bg='white', 
                             relief=tk.RAISED, 
                             bd=2,
-                            width=15,
-                            height=4,
+                            width=self.square_width,
+                            height=self.square_height,
                             command=lambda s=shelf_idx, r=row_idx, c=col_idx, sq=square_idx: 
                             self.select_position(s, r, c, sq)
                         )
@@ -146,17 +129,6 @@ class WardrobeManager:
                         self.shelf_buttons[pos_key] = square_btn
         
         self.update_display()
-    
-    def on_window_resize(self, event):
-        """Obsługa zmiany rozmiaru okna"""
-        pass
-    
-    def on_mousewheel(self, event):
-        """Obsługa scrollowania myszą"""
-        if event.num == 5 or event.delta < 0:
-            self.canvas.yview_scroll(1, "units")
-        elif event.num == 4 or event.delta > 0:
-            self.canvas.yview_scroll(-1, "units")
     
     def input_square(self):
         """Wczytanie numeru kwadratu"""
