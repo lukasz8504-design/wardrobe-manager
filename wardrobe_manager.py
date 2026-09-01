@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox
 import configparser
 import json
 import os
@@ -35,33 +35,26 @@ class WardrobeManager:
         self.orange_text = self.config.get('COLORS', 'orange_text')
         self.red_text = self.config.get('COLORS', 'red_text')
         
-        # Wygląd
-        self.window_width = self.config.getint('APPEARANCE', 'window_width')
-        self.window_height = self.config.getint('APPEARANCE', 'window_height')
-        self.button_width = self.config.getint('APPEARANCE', 'button_width')
-        self.button_height = self.config.getint('APPEARANCE', 'button_height')
-        self.timer_font_size = self.config.getint('APPEARANCE', 'timer_font_size')
-        self.square_font_size = self.config.getint('APPEARANCE', 'square_font_size')
-        
         # Pliki
         self.history_file = self.config.get('FILES', 'history_file')
         self.state_file = self.config.get('FILES', 'state_file')
         
-        # Ustawienia okna
-        self.root.geometry(f"{self.window_width}x{self.window_height}")
-        self.root.resizable(False, False)
+        # Maksymalizuj okno na pełny ekran
+        self.root.state('zoomed')  # Windows
+        self.root.resizable(True, True)
+        self.root.bind('<Configure>', self.on_window_resize)
         
-        # Stan timera
-        self.timer_running = False
-        self.remaining_time = self.initial_time * 60  # konwersja na sekundy
+        # Stan timera - osobny timer dla każdego kwadratu
+        self.square_timers = {}  # {pos_key: remaining_time_in_seconds}
+        self.timer_threads = {}  # {pos_key: thread}
         self.current_square = None
-        self.current_position = None
         
         # Wczytanie stanu szafy
         self.wardrobe_state = self.load_state()
         
         # GUI
         self.setup_ui()
+        self.start_all_timers()
         
     def setup_ui(self):
         """Tworzenie interfejsu użytkownika"""
@@ -69,70 +62,101 @@ class WardrobeManager:
         main_frame = tk.Frame(self.root, bg='white')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Górna część - Input + Timer
+        # Górna część - Input
         top_frame = tk.Frame(main_frame, bg='white')
         top_frame.pack(fill=tk.X, pady=10)
         
         # Input dla numeru kwadratu
-        tk.Label(top_frame, text="Numer kwadratu:", bg='white', font=('Arial', 12)).pack(side=tk.LEFT, padx=5)
+        tk.Label(top_frame, text="Numer kwadratu:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
         self.square_entry = tk.Entry(top_frame, width=10, font=('Arial', 12))
         self.square_entry.pack(side=tk.LEFT, padx=5)
         self.square_entry.bind('<Return>', lambda e: self.input_square())
         
-        tk.Button(top_frame, text="Potwierdź", command=self.input_square).pack(side=tk.LEFT, padx=5)
-        tk.Button(top_frame, text="Wyczyść", command=self.clear_all).pack(side=tk.LEFT, padx=5)
+        tk.Button(top_frame, text="Potwierdź", command=self.input_square, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+        tk.Button(top_frame, text="Wyczyść wszytko", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         
-        # Timer
-        self.timer_label = tk.Label(top_frame, text="", font=('Arial', self.timer_font_size, 'bold'), 
-                                     bg=self.normal_bg, fg=self.normal_text, padx=20, pady=10)
-        self.timer_label.pack(side=tk.RIGHT, padx=20)
+        # Status
+        self.status_label = tk.Label(top_frame, text="Czekam na numer kwadratu...", 
+                                     bg='lightyellow', font=('Arial', 10), relief=tk.SUNKEN, bd=1)
+        self.status_label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
         
-        # Środkowa część - Półki
-        shelves_frame = tk.Frame(main_frame, bg='white')
-        shelves_frame.pack(fill=tk.BOTH, expand=True)
+        # Środkowa część - Półki z kanwą z scrollbarem
+        canvas_frame = tk.Frame(main_frame, bg='white')
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Canvas z scrollbarem
+        self.canvas = tk.Canvas(canvas_frame, bg='white', highlightthickness=0)
+        scrollbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg='white')
+        
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Bind mouse wheel
+        self.canvas.bind_all("<MouseWheel>", self.on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self.on_mousewheel)
+        self.canvas.bind_all("<Button-5>", self.on_mousewheel)
         
         self.shelf_buttons = {}
         
         for shelf_idx in range(self.num_shelves):
-            shelf_label = tk.Label(shelves_frame, text=f"Półka {shelf_idx + 1}", 
-                                   bg='white', font=('Arial', 10, 'bold'))
-            shelf_label.pack(pady=5)
+            shelf_label = tk.Label(self.scrollable_frame, text=f"Półka {shelf_idx + 1}", 
+                                   bg='white', font=('Arial', 12, 'bold'))
+            shelf_label.pack(pady=10)
             
-            shelf_frame = tk.Frame(shelves_frame, bg='lightgray', relief=tk.RAISED, bd=2)
+            shelf_frame = tk.Frame(self.scrollable_frame, bg='lightgray', relief=tk.RAISED, bd=2)
             shelf_frame.pack(fill=tk.X, padx=10, pady=5)
             
+            # Każda półka ma 2 wiersze (jeden na drugim) i 1 kolumnę
             for row_idx in range(self.num_rows):
                 row_frame = tk.Frame(shelf_frame, bg='lightgray')
                 row_frame.pack(fill=tk.X, padx=5, pady=5)
                 
                 for col_idx in range(self.num_columns):
-                    section_frame = tk.Frame(row_frame, bg='white', relief=tk.SUNKEN, bd=1)
-                    section_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=3, pady=3)
+                    # Kontener na kwadraty (dwa na sobie)
+                    section_frame = tk.Frame(row_frame, bg='white', relief=tk.SUNKEN, bd=2)
+                    section_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
                     
-                    # Podział na kwadraty
-                    squares_frame = tk.Frame(section_frame, bg='white')
-                    squares_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-                    
+                    # Kwadraty ustawione pionowo (jeden nad drugim)
                     for square_idx in range(self.squares_per_section):
-                        square_btn = tk.Button(squares_frame, text="", 
-                                              width=int(self.button_width/8), 
-                                              height=int(self.button_height/20),
-                                              font=('Arial', self.square_font_size),
-                                              bg='white', relief=tk.RAISED, bd=1,
-                                              command=lambda s=shelf_idx, r=row_idx, c=col_idx, sq=square_idx: 
-                                              self.select_position(s, r, c, sq))
+                        square_btn = tk.Button(
+                            section_frame, 
+                            text="", 
+                            font=('Arial', 16, 'bold'),
+                            bg='white', 
+                            relief=tk.RAISED, 
+                            bd=2,
+                            width=15,
+                            height=4,
+                            command=lambda s=shelf_idx, r=row_idx, c=col_idx, sq=square_idx: 
+                            self.select_position(s, r, c, sq)
+                        )
                         
-                        square_btn.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=1, pady=1)
+                        square_btn.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
                         
                         pos_key = (shelf_idx, row_idx, col_idx, square_idx)
                         self.shelf_buttons[pos_key] = square_btn
         
-        # Dolna część - Status
-        self.status_label = tk.Label(main_frame, text="Czekam na numer kwadratu...", 
-                                     bg='lightyellow', font=('Arial', 10), relief=tk.SUNKEN, bd=1)
-        self.status_label.pack(fill=tk.X, pady=10)
-        
         self.update_display()
+    
+    def on_window_resize(self, event):
+        """Obsługa zmiany rozmiaru okna"""
+        pass
+    
+    def on_mousewheel(self, event):
+        """Obsługa scrollowania myszą"""
+        if event.num == 5 or event.delta < 0:
+            self.canvas.yview_scroll(1, "units")
+        elif event.num == 4 or event.delta > 0:
+            self.canvas.yview_scroll(-1, "units")
     
     def input_square(self):
         """Wczytanie numeru kwadratu"""
@@ -144,7 +168,7 @@ class WardrobeManager:
             
             self.current_square = square_num
             self.square_entry.delete(0, tk.END)
-            self.status_label.config(text=f"Wybrałeś kwadrat #{square_num}. Teraz kliknij na półkę.", 
+            self.status_label.config(text=f"Wybrałeś kwadrat #{square_num}. Teraz kliknij na pozycję na półce.", 
                                     bg='lightyellow')
         except ValueError:
             messagebox.showerror("Błąd", "Wprowadź prawidłowy numer kwadratu")
@@ -160,83 +184,105 @@ class WardrobeManager:
         # Jeśli pozycja jest już zajęta, usuń poprzedni kwadrat
         if pos_key in self.wardrobe_state:
             del self.wardrobe_state[pos_key]
+            # Zatrzymaj timer dla tego kwadratu
+            if pos_key in self.square_timers:
+                del self.square_timers[pos_key]
+            if pos_key in self.timer_threads:
+                del self.timer_threads[pos_key]
         else:
             # Dodaj nowy kwadrat
             self.wardrobe_state[pos_key] = self.current_square
             
+            # Inicjalizuj timer dla tego kwadratu
+            self.square_timers[pos_key] = self.initial_time * 60
+            
             # Zapisz do historii
             self.save_to_history(self.current_square, shelf, row, col, square)
             
-            # Uruchom timer
-            self.start_timer()
+            # Uruchom timer dla tego kwadratu
+            self.start_square_timer(pos_key)
         
         self.save_state()
         self.update_display()
         self.current_square = None
-        self.status_label.config(text=f"Kwadrat #{self.current_square} umieszczony na półce", bg='lightgreen')
+        self.status_label.config(text="Pozycja zaktualizowana. Wpisz następny kwadrat.", bg='lightgreen')
     
-    def start_timer(self):
-        """Uruchomienie timera"""
-        if not self.timer_running:
-            self.timer_running = True
-            self.remaining_time = self.initial_time * 60
-            timer_thread = Thread(target=self.run_timer, daemon=True)
+    def start_square_timer(self, pos_key):
+        """Uruchomienie timera dla konkretnego kwadratu"""
+        if pos_key not in self.timer_threads:
+            timer_thread = Thread(target=self.run_square_timer, args=(pos_key,), daemon=True)
+            self.timer_threads[pos_key] = timer_thread
             timer_thread.start()
     
-    def run_timer(self):
-        """Działanie timera"""
-        while self.timer_running and self.remaining_time > 0:
-            self.remaining_time -= 1
-            self.update_timer_display()
+    def run_square_timer(self, pos_key):
+        """Działanie timera dla konkretnego kwadratu"""
+        while pos_key in self.square_timers and self.square_timers[pos_key] > 0:
+            self.square_timers[pos_key] -= 1
+            self.update_display()
             time.sleep(1)
         
-        if self.remaining_time <= 0:
-            self.timer_running = False
-            self.remaining_time = 0
-            messagebox.showinfo("Timer", "Czas się skończył!")
-            self.clear_all()
+        # Czasami usun timer
+        if pos_key in self.square_timers and self.square_timers[pos_key] <= 0:
+            messagebox.showinfo("Timer", f"Czas się skończył dla kwadratu na pozycji {pos_key}!")
+            if pos_key in self.wardrobe_state:
+                del self.wardrobe_state[pos_key]
+                del self.square_timers[pos_key]
+                self.save_state()
+                self.update_display()
     
-    def update_timer_display(self):
-        """Aktualizacja wyświetlania timera"""
-        minutes = self.remaining_time // 60
-        seconds = self.remaining_time % 60
-        time_str = f"{minutes:02d}:{seconds:02d}"
-        
-        # Wybór koloru na podstawie pozostałego czasu (w minutach)
-        remaining_minutes = self.remaining_time / 60
+    def start_all_timers(self):
+        """Uruchomienie wszystkich timerów dla kwadratów z poprzedniej sesji"""
+        for pos_key in self.wardrobe_state.keys():
+            if pos_key not in self.square_timers:
+                self.square_timers[pos_key] = self.initial_time * 60
+            self.start_square_timer(pos_key)
+    
+    def get_color_for_time(self, remaining_seconds):
+        """Zwraca kolory na podstawie pozostałego czasu"""
+        remaining_minutes = remaining_seconds / 60
         
         if remaining_minutes <= self.red_threshold:
-            bg_color = self.red_bg
-            text_color = self.red_text
+            return self.red_bg, self.red_text
         elif remaining_minutes <= self.orange_threshold:
-            bg_color = self.orange_bg
-            text_color = self.orange_text
+            return self.orange_bg, self.orange_text
         else:
-            bg_color = self.normal_bg
-            text_color = self.normal_text
-        
-        self.timer_label.config(text=time_str, bg=bg_color, fg=text_color)
+            return self.normal_bg, self.normal_text
+    
+    def format_time(self, seconds):
+        """Konwertuje sekundy do formatu MM:SS"""
+        minutes = int(seconds) // 60
+        secs = int(seconds) % 60
+        return f"{minutes:02d}:{secs:02d}"
     
     def update_display(self):
         """Aktualizacja wyświetlania przycisków"""
         for pos_key, btn in self.shelf_buttons.items():
             if pos_key in self.wardrobe_state:
                 square_num = self.wardrobe_state[pos_key]
-                btn.config(text=str(square_num), bg='lightblue', fg='black')
+                remaining_time = self.square_timers.get(pos_key, self.initial_time * 60)
+                time_str = self.format_time(remaining_time)
+                
+                # Kolorowanie na podstawie czasu
+                bg_color, text_color = self.get_color_for_time(remaining_time)
+                
+                btn.config(
+                    text=f"#{square_num}\n{time_str}", 
+                    bg=bg_color, 
+                    fg=text_color
+                )
             else:
                 btn.config(text="", bg='white', fg='black')
-        
-        self.update_timer_display()
     
     def clear_all(self):
         """Czyszczenie wszystkiego"""
-        self.timer_running = False
-        self.remaining_time = self.initial_time * 60
+        self.square_timers.clear()
+        self.timer_threads.clear()
         self.current_square = None
         self.wardrobe_state.clear()
         self.save_state()
         self.update_display()
         self.status_label.config(text="Czyszczenie zakończone. Gotów na nowy numer.", bg='lightyellow')
+        self.square_entry.delete(0, tk.END)
     
     def save_to_history(self, square_num, shelf, row, col, square_idx):
         """Zapis do pliku historii"""
@@ -251,22 +297,36 @@ class WardrobeManager:
     def save_state(self):
         """Zapis stanu szafy do JSON"""
         state_dict = {}
+        timers_dict = {}
+        
         for pos, square_num in self.wardrobe_state.items():
             state_dict[str(pos)] = square_num
+            if pos in self.square_timers:
+                timers_dict[str(pos)] = self.square_timers[pos]
         
         with open(self.state_file, 'w', encoding='utf-8') as f:
-            json.dump(state_dict, f, indent=2)
+            json.dump({"state": state_dict, "timers": timers_dict}, f, indent=2)
     
     def load_state(self):
         """Wczytanie stanu szafy z JSON"""
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file, 'r', encoding='utf-8') as f:
-                    state_dict = json.load(f)
+                    data = json.load(f)
+                    state_dict = data.get("state", {})
+                    timers_dict = data.get("timers", {})
+                    
                     state = {}
                     for pos_str, square_num in state_dict.items():
                         pos = eval(pos_str)
                         state[pos] = square_num
+                        
+                        # Wczytaj timery
+                        if pos_str in timers_dict:
+                            self.square_timers[pos] = timers_dict[pos_str]
+                        else:
+                            self.square_timers[pos] = self.initial_time * 60
+                    
                     return state
             except:
                 pass
