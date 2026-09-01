@@ -36,9 +36,9 @@ class WardrobeManager:
         self.red_text = self.config.get('COLORS', 'red_text')
         
         # Wygląd
-        self.square_width = self.config.getint('APPEARANCE', 'square_width')
-        self.square_height = self.config.getint('APPEARANCE', 'square_height')
-        self.square_font_size = self.config.getint('APPEARANCE', 'square_font_size')
+        self.jig_width = self.config.getint('APPEARANCE', 'square_width')
+        self.jig_height = self.config.getint('APPEARANCE', 'square_height')
+        self.jig_font_size = self.config.getint('APPEARANCE', 'square_font_size')
         
         # Pliki
         self.history_file = self.config.get('FILES', 'history_file')
@@ -48,10 +48,11 @@ class WardrobeManager:
         self.root.state('zoomed')  # Windows
         self.root.resizable(True, True)
         
-        # Stan timera - osobny timer dla każdego kwadratu
-        self.square_timers = {}  # {pos_key: remaining_time_in_seconds}
+        # Stan timera - osobny timer dla każdego JIG
+        self.jig_timers = {}  # {pos_key: remaining_time_in_seconds}
+        self.jig_insertion_times = {}  # {pos_key: insertion_timestamp}
         self.timer_threads = {}  # {pos_key: thread}
-        self.current_square = None
+        self.current_jig = None
         
         # Wczytanie stanu szafy
         self.wardrobe_state = self.load_state()
@@ -70,17 +71,17 @@ class WardrobeManager:
         top_frame = tk.Frame(main_frame, bg='white')
         top_frame.pack(fill=tk.X, pady=10)
         
-        # Input dla numeru kwadratu
-        tk.Label(top_frame, text="Numer kwadratu:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
-        self.square_entry = tk.Entry(top_frame, width=10, font=('Arial', 12))
-        self.square_entry.pack(side=tk.LEFT, padx=5)
-        self.square_entry.bind('<Return>', lambda e: self.input_square())
+        # Input dla numeru JIG
+        tk.Label(top_frame, text="Numer JIG:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
+        self.jig_entry = tk.Entry(top_frame, width=10, font=('Arial', 12))
+        self.jig_entry.pack(side=tk.LEFT, padx=5)
+        self.jig_entry.bind('<Return>', lambda e: self.input_jig())
         
-        tk.Button(top_frame, text="Potwierdź", command=self.input_square, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+        tk.Button(top_frame, text="Potwierdź", command=self.input_jig, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         tk.Button(top_frame, text="Wyczyść wszystko", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         
         # Status
-        self.status_label = tk.Label(top_frame, text="Czekam na numer kwadratu...", 
+        self.status_label = tk.Label(top_frame, text="Czekam na numer JIG...", 
                                      bg='lightyellow', font=('Arial', 10), relief=tk.SUNKEN, bd=1)
         self.status_label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
         
@@ -104,110 +105,134 @@ class WardrobeManager:
                 row_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
                 
                 for col_idx in range(self.num_columns):
-                    # Kontener na kwadraty (dwa na sobie)
+                    # Kontener na JIG (dwa na sobie)
                     section_frame = tk.Frame(row_frame, bg='white', relief=tk.SUNKEN, bd=2)
                     section_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
                     
-                    # Kwadraty ustawione pionowo (jeden nad drugim)
-                    for square_idx in range(self.squares_per_section):
-                        square_btn = tk.Button(
+                    # JIG ustawione pionowo (jeden nad drugim)
+                    for jig_idx in range(self.squares_per_section):
+                        jig_btn = tk.Button(
                             section_frame, 
                             text="", 
-                            font=('Arial', self.square_font_size, 'bold'),
+                            font=('Arial', self.jig_font_size, 'bold'),
                             bg='white', 
                             relief=tk.RAISED, 
                             bd=2,
-                            width=self.square_width,
-                            height=self.square_height,
-                            command=lambda s=shelf_idx, r=row_idx, c=col_idx, sq=square_idx: 
-                            self.select_position(s, r, c, sq)
+                            width=self.jig_width,
+                            height=self.jig_height,
+                            command=lambda s=shelf_idx, r=row_idx, c=col_idx, j=jig_idx: 
+                            self.select_position(s, r, c, j)
                         )
                         
-                        square_btn.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+                        jig_btn.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
                         
-                        pos_key = (shelf_idx, row_idx, col_idx, square_idx)
-                        self.shelf_buttons[pos_key] = square_btn
+                        pos_key = (shelf_idx, row_idx, col_idx, jig_idx)
+                        self.shelf_buttons[pos_key] = jig_btn
         
         self.update_display()
     
-    def input_square(self):
-        """Wczytanie numeru kwadratu"""
+    def input_jig(self):
+        """Wczytanie numeru JIG"""
         try:
-            square_num = int(self.square_entry.get())
-            if square_num < 0:
-                messagebox.showerror("Błąd", "Numer kwadratu musi być dodatni")
+            jig_num = int(self.jig_entry.get())
+            if jig_num < 0:
+                messagebox.showerror("Błąd", "Numer JIG musi być dodatni")
                 return
             
-            self.current_square = square_num
-            self.square_entry.delete(0, tk.END)
-            self.status_label.config(text=f"Wybrałeś kwadrat #{square_num}. Teraz kliknij na pozycję na półce.", 
+            self.current_jig = jig_num
+            self.jig_entry.delete(0, tk.END)
+            self.status_label.config(text=f"Wybrałeś JIG #{jig_num}. Teraz kliknij na pozycję na półce.", 
                                     bg='lightyellow')
         except ValueError:
-            messagebox.showerror("Błąd", "Wprowadź prawidłowy numer kwadratu")
+            messagebox.showerror("Błąd", "Wprowadź prawidłowy numer JIG")
     
-    def select_position(self, shelf, row, col, square):
+    def select_position(self, shelf, row, col, jig):
         """Wybór pozycji na półce"""
-        if self.current_square is None:
-            messagebox.showwarning("Ostrzeżenie", "Najpierw wprowadź numer kwadratu")
+        if self.current_jig is None:
+            messagebox.showwarning("Ostrzeżenie", "Najpierw wprowadź numer JIG")
             return
         
-        pos_key = (shelf, row, col, square)
+        pos_key = (shelf, row, col, jig)
         
-        # Jeśli pozycja jest już zajęta, usuń poprzedni kwadrat
+        # Jeśli pozycja jest już zajęta, usuń poprzedni JIG
         if pos_key in self.wardrobe_state:
             del self.wardrobe_state[pos_key]
-            # Zatrzymaj timer dla tego kwadratu
-            if pos_key in self.square_timers:
-                del self.square_timers[pos_key]
+            # Zatrzymaj timer dla tego JIG
+            if pos_key in self.jig_timers:
+                del self.jig_timers[pos_key]
+            if pos_key in self.jig_insertion_times:
+                del self.jig_insertion_times[pos_key]
             if pos_key in self.timer_threads:
                 del self.timer_threads[pos_key]
         else:
-            # Dodaj nowy kwadrat
-            self.wardrobe_state[pos_key] = self.current_square
+            # Dodaj nowy JIG
+            self.wardrobe_state[pos_key] = self.current_jig
             
-            # Inicjalizuj timer dla tego kwadratu
-            self.square_timers[pos_key] = self.initial_time * 60
+            # Inicjalizuj timer dla tego JIG
+            self.jig_timers[pos_key] = self.initial_time * 60
+            
+            # Zapisz czas włożenia JIG
+            self.jig_insertion_times[pos_key] = datetime.now()
             
             # Zapisz do historii
-            self.save_to_history(self.current_square, shelf, row, col, square)
+            self.save_to_history(self.current_jig, shelf, row, col, jig)
             
-            # Uruchom timer dla tego kwadratu
-            self.start_square_timer(pos_key)
+            # Uruchom timer dla tego JIG
+            self.start_jig_timer(pos_key)
         
         self.save_state()
         self.update_display()
-        self.current_square = None
-        self.status_label.config(text="Pozycja zaktualizowana. Wpisz następny kwadrat.", bg='lightgreen')
+        self.current_jig = None
+        self.status_label.config(text="Pozycja zaktualizowana. Wpisz następny JIG.", bg='lightgreen')
     
-    def start_square_timer(self, pos_key):
-        """Uruchomienie timera dla konkretnego kwadratu"""
+    def start_jig_timer(self, pos_key):
+        """Uruchomienie timera dla konkretnego JIG"""
         if pos_key not in self.timer_threads:
-            timer_thread = Thread(target=self.run_square_timer, args=(pos_key,), daemon=True)
+            timer_thread = Thread(target=self.run_jig_timer, args=(pos_key,), daemon=True)
             self.timer_threads[pos_key] = timer_thread
             timer_thread.start()
     
-    def run_square_timer(self, pos_key):
-        """Działanie timera dla konkretnego kwadratu"""
-        while pos_key in self.square_timers and self.square_timers[pos_key] > 0:
-            self.square_timers[pos_key] -= 1
+    def run_jig_timer(self, pos_key):
+        """Działanie timera dla konkretnego JIG"""
+        while pos_key in self.jig_timers and self.jig_timers[pos_key] > 0:
+            self.jig_timers[pos_key] -= 1
             self.update_display()
             time.sleep(1)
         
         # Czasami usun timer
-        if pos_key in self.square_timers and self.square_timers[pos_key] <= 0:
-            messagebox.showinfo("Timer", f"Czas się skończył dla kwadratu na pozycji {pos_key}!")
+        if pos_key in self.jig_timers and self.jig_timers[pos_key] <= 0:
+            messagebox.showinfo("Timer", f"Czas się skończył dla JIG na pozycji {pos_key}!")
             if pos_key in self.wardrobe_state:
                 del self.wardrobe_state[pos_key]
-                del self.square_timers[pos_key]
+                del self.jig_timers[pos_key]
+                if pos_key in self.jig_insertion_times:
+                    del self.jig_insertion_times[pos_key]
                 self.save_state()
                 self.update_display()
     
     def start_all_timers(self):
-        """Uruchomienie wszystkich timerów dla kwadratów z poprzedniej sesji"""
+        """Uruchomienie wszystkich timerów dla JIG z poprzedniej sesji"""
         for pos_key in self.wardrobe_state.keys():
-            if pos_key not in self.square_timers:
-                self.square_timers[pos_key] = self.initial_time * 60
-            self.start_square_timer(pos_key)
+            if pos_key not in self.jig_timers:
+                # Porównaj czas włożenia JIG z aktualnym czasem
+                if pos_key in self.jig_insertion_times:
+                    insertion_time = self.jig_insertion_times[pos_key]
+                    elapsed_time = (datetime.now() - insertion_time).total_seconds()
+                    remaining_time = (self.initial_time * 60) - elapsed_time
+                    
+                    if remaining_time > 0:
+                        self.jig_timers[pos_key] = remaining_time
+                    else:
+                        # Czas się skończył, usuń JIG
+                        del self.wardrobe_state[pos_key]
+                        if pos_key in self.jig_insertion_times:
+                            del self.jig_insertion_times[pos_key]
+                        self.save_state()
+                        continue
+                else:
+                    self.jig_timers[pos_key] = self.initial_time * 60
+            
+            self.start_jig_timer(pos_key)
     
     def get_color_for_time(self, remaining_seconds):
         """Zwraca kolory na podstawie pozostałego czasu"""
@@ -230,15 +255,15 @@ class WardrobeManager:
         """Aktualizacja wyświetlania przycisków"""
         for pos_key, btn in self.shelf_buttons.items():
             if pos_key in self.wardrobe_state:
-                square_num = self.wardrobe_state[pos_key]
-                remaining_time = self.square_timers.get(pos_key, self.initial_time * 60)
+                jig_num = self.wardrobe_state[pos_key]
+                remaining_time = self.jig_timers.get(pos_key, self.initial_time * 60)
                 time_str = self.format_time(remaining_time)
                 
                 # Kolorowanie na podstawie czasu
                 bg_color, text_color = self.get_color_for_time(remaining_time)
                 
                 btn.config(
-                    text=f"#{square_num}\n{time_str}", 
+                    text=f"#{jig_num}\n{time_str}", 
                     bg=bg_color, 
                     fg=text_color
                 )
@@ -247,21 +272,22 @@ class WardrobeManager:
     
     def clear_all(self):
         """Czyszczenie wszystkiego"""
-        self.square_timers.clear()
+        self.jig_timers.clear()
+        self.jig_insertion_times.clear()
         self.timer_threads.clear()
-        self.current_square = None
+        self.current_jig = None
         self.wardrobe_state.clear()
         self.save_state()
         self.update_display()
         self.status_label.config(text="Czyszczenie zakończone. Gotów na nowy numer.", bg='lightyellow')
-        self.square_entry.delete(0, tk.END)
+        self.jig_entry.delete(0, tk.END)
     
-    def save_to_history(self, square_num, shelf, row, col, square_idx):
+    def save_to_history(self, jig_num, shelf, row, col, jig_idx):
         """Zapis do pliku historii"""
         now = datetime.now()
         timestamp = now.strftime("%d-%m-%Y %H:%M:%S")
         
-        history_entry = f"[{timestamp}] Kwadrat #{square_num} -> Półka {shelf + 1}, Rząd {row + 1}, Kolumna {col + 1}, Pozycja {square_idx + 1}\n"
+        history_entry = f"[{timestamp}] JIG #{jig_num} -> Półka {shelf + 1}, Rząd {row + 1}, Kolumna {col + 1}, Pozycja {jig_idx + 1}\n"
         
         with open(self.history_file, 'a', encoding='utf-8') as f:
             f.write(history_entry)
@@ -270,14 +296,21 @@ class WardrobeManager:
         """Zapis stanu szafy do JSON"""
         state_dict = {}
         timers_dict = {}
+        insertion_times_dict = {}
         
-        for pos, square_num in self.wardrobe_state.items():
-            state_dict[str(pos)] = square_num
-            if pos in self.square_timers:
-                timers_dict[str(pos)] = self.square_timers[pos]
+        for pos, jig_num in self.wardrobe_state.items():
+            state_dict[str(pos)] = jig_num
+            if pos in self.jig_timers:
+                timers_dict[str(pos)] = self.jig_timers[pos]
+            if pos in self.jig_insertion_times:
+                insertion_times_dict[str(pos)] = self.jig_insertion_times[pos].isoformat()
         
         with open(self.state_file, 'w', encoding='utf-8') as f:
-            json.dump({"state": state_dict, "timers": timers_dict}, f, indent=2)
+            json.dump({
+                "state": state_dict, 
+                "timers": timers_dict,
+                "insertion_times": insertion_times_dict
+            }, f, indent=2)
     
     def load_state(self):
         """Wczytanie stanu szafy z JSON"""
@@ -287,17 +320,25 @@ class WardrobeManager:
                     data = json.load(f)
                     state_dict = data.get("state", {})
                     timers_dict = data.get("timers", {})
+                    insertion_times_dict = data.get("insertion_times", {})
                     
                     state = {}
-                    for pos_str, square_num in state_dict.items():
+                    for pos_str, jig_num in state_dict.items():
                         pos = eval(pos_str)
-                        state[pos] = square_num
+                        state[pos] = jig_num
                         
                         # Wczytaj timery
                         if pos_str in timers_dict:
-                            self.square_timers[pos] = timers_dict[pos_str]
+                            self.jig_timers[pos] = timers_dict[pos_str]
                         else:
-                            self.square_timers[pos] = self.initial_time * 60
+                            self.jig_timers[pos] = self.initial_time * 60
+                        
+                        # Wczytaj czasy włożenia JIG
+                        if pos_str in insertion_times_dict:
+                            try:
+                                self.jig_insertion_times[pos] = datetime.fromisoformat(insertion_times_dict[pos_str])
+                            except:
+                                self.jig_insertion_times[pos] = datetime.now()
                     
                     return state
             except:
