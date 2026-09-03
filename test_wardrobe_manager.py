@@ -67,6 +67,57 @@ class TimerCalculationTests(unittest.TestCase):
         finally:
             os.unlink(history_file)
 
+    def test_history_restores_active_jig_and_recalculates_remaining_time(self):
+        with NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as history:
+            history.write(
+                "[01-01-2026 12:00:00] JIG #7 -> "
+                "Półka 1, Rząd 1, Kolumna 1, Pozycja 1\n"
+            )
+            history_file = history.name
+        try:
+            manager = WardrobeManager.__new__(WardrobeManager)
+            manager.history_file = history_file
+            manager.wardrobe_state = {}
+            manager.jig_timers = {}
+            manager.jig_insertion_times = {}
+            manager.timer_threads = {}
+            manager.expired_jigs = set()
+            manager.initial_time = 100
+            manager.update_display = lambda: None
+            manager.start_jig_timer = lambda pos_key: None
+
+            manager.load_history()
+            manager.start_all_timers(datetime(2026, 1, 1, 13, 39, 30))
+
+            self.assertEqual(manager.wardrobe_state, {(0, 0, 0, 0): 7})
+            self.assertEqual(manager.jig_timers[(0, 0, 0, 0)], 30)
+            self.assertNotIn((0, 0, 0, 0), manager.expired_jigs)
+        finally:
+            os.unlink(history_file)
+
+    def test_later_removal_is_honored_even_if_clock_was_adjusted(self):
+        with NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as history:
+            history.write(
+                "[01-01-2026 12:00:00] JIG #7 -> "
+                "Półka 1, Rząd 1, Kolumna 1, Pozycja 1\n"
+                "[01-01-2026 11:59:00] JIG #7 <- "
+                "Półka 1, Rząd 1, Kolumna 1, Pozycja 1\n"
+            )
+            history_file = history.name
+        try:
+            manager = WardrobeManager.__new__(WardrobeManager)
+            manager.history_file = history_file
+            manager.wardrobe_state = {(0, 0, 0, 0): 7}
+            manager.jig_timers = {}
+            manager.jig_insertion_times = {}
+            manager.expired_jigs = set()
+
+            manager.load_history()
+
+            self.assertEqual(manager.wardrobe_state, {})
+        finally:
+            os.unlink(history_file)
+
     def test_missing_history_does_not_restore_saved_jigs(self):
         manager = WardrobeManager.__new__(WardrobeManager)
         manager.history_file = "history-file-that-does-not-exist.txt"
