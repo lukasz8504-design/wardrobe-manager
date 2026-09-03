@@ -311,7 +311,7 @@ class WardrobeManager:
                 col,
                 jig,
                 action="remove",
-                operator_id=self.jig_operator_ids.get(pos_key, UNKNOWN_OPERATOR_ID),
+                operator_id=self.jig_operator_ids.get(pos_key) or UNKNOWN_OPERATOR_ID,
             )
             del self.wardrobe_state[pos_key]
             # Zatrzymaj timer dla tego JIG
@@ -452,7 +452,7 @@ class WardrobeManager:
                 pos_key[2],
                 pos_key[3],
                 action="remove",
-                operator_id=self.jig_operator_ids.get(pos_key, UNKNOWN_OPERATOR_ID),
+                operator_id=self.jig_operator_ids.get(pos_key) or UNKNOWN_OPERATOR_ID,
             )
         self.jig_timers.clear()
         self.jig_insertion_times.clear()
