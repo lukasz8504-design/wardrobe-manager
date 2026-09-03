@@ -15,7 +15,6 @@ if "tkinter" not in sys.modules:
     sys.modules["tkinter"] = tkinter_stub
 
 from wardrobe_manager import (
-    UNKNOWN_OPERATOR_ID,
     WardrobeManager,
     calculate_remaining_time,
     format_history_entry,
@@ -153,7 +152,7 @@ class TimerCalculationTests(unittest.TestCase):
         finally:
             os.unlink(history_file)
 
-    def test_load_history_uses_fallback_operator_id_for_legacy_entries(self):
+    def test_load_history_keeps_missing_operator_id_for_legacy_entries(self):
         with NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as history:
             history.write(
                 "[01-01-2026 12:00:00] JIG #7 -> "
@@ -172,7 +171,7 @@ class TimerCalculationTests(unittest.TestCase):
             manager.load_history()
 
             self.assertEqual(manager.wardrobe_state, {(0, 0, 0, 0): 7})
-            self.assertEqual(manager.jig_operator_ids, {(0, 0, 0, 0): UNKNOWN_OPERATOR_ID})
+            self.assertEqual(manager.jig_operator_ids, {(0, 0, 0, 0): None})
         finally:
             os.unlink(history_file)
 

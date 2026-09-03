@@ -569,7 +569,7 @@ class WardrobeManager:
             else:
                 self.wardrobe_state[pos_key] = event["jig"]
                 self.jig_insertion_times[pos_key] = event["timestamp"]
-                self.jig_operator_ids[pos_key] = event["operator_id"] or UNKNOWN_OPERATOR_ID
+                self.jig_operator_ids[pos_key] = event["operator_id"]
 
 if __name__ == "__main__":
     root = tk.Tk()
