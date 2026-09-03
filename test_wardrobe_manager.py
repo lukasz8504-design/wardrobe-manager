@@ -67,6 +67,20 @@ class TimerCalculationTests(unittest.TestCase):
         finally:
             os.unlink(history_file)
 
+    def test_missing_history_does_not_restore_saved_jigs(self):
+        manager = WardrobeManager.__new__(WardrobeManager)
+        manager.history_file = "history-file-that-does-not-exist.txt"
+        manager.wardrobe_state = {(0, 0, 0, 0): 7}
+        manager.jig_timers = {(0, 0, 0, 0): 6000}
+        manager.jig_insertion_times = {
+            (0, 0, 0, 0): datetime(2026, 1, 1, 12, 0, 0)
+        }
+        manager.expired_jigs = {(0, 0, 0, 0)}
+
+        manager.load_history()
+
+        self.assertEqual(manager.wardrobe_state, {})
+
 
 if __name__ == "__main__":
     unittest.main()
