@@ -10,6 +10,8 @@ import time
 
 
 HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
+UNKNOWN_OPERATOR_ID = "BRAK"
+OPERATOR_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{4}$")
 
 
 def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
@@ -22,7 +24,7 @@ def parse_history_line(line):
     """Parse a history line into its event data, or return None for old/invalid lines."""
     pattern = (
         r"^\[(?P<timestamp>[^\]]+)\]\s+JIG\s+#(?P<jig>\d+)\s+"
-        r"(?:\|\s+OPERATOR\s+ID:\s+(?P<operator_id>\S{4})\s+)?"
+        r"(?:\|\s+OPERATOR\s+ID:\s+(?P<operator_id>[A-Za-z0-9]{4})\s+)?"
         r"(?P<action>->|<-)\s+Półka\s+(?P<shelf>\d+),\s+Rząd\s+(?P<row>\d+),\s+"
         r"Kolumna\s+(?P<col>\d+),\s+Pozycja\s+(?P<position>\d+)"
     )
@@ -50,8 +52,8 @@ def parse_history_line(line):
 def validate_operator_id(operator_id):
     """Return a cleaned operator id or raise ValueError when it is invalid."""
     normalized_operator_id = operator_id.strip()
-    if len(normalized_operator_id) != 4:
-        raise ValueError("OPERATOR ID musi mieć dokładnie 4 znaki")
+    if not OPERATOR_ID_PATTERN.fullmatch(normalized_operator_id):
+        raise ValueError("OPERATOR ID musi mieć dokładnie 4 znaki alfanumeryczne")
     return normalized_operator_id
 
 
@@ -292,7 +294,7 @@ class WardrobeManager:
                 col,
                 jig,
                 action="remove",
-                operator_id=self.jig_operator_ids.get(pos_key),
+                operator_id=self.current_operator_id,
             )
             del self.wardrobe_state[pos_key]
             # Zatrzymaj timer dla tego JIG
@@ -550,7 +552,7 @@ class WardrobeManager:
             else:
                 self.wardrobe_state[pos_key] = event["jig"]
                 self.jig_insertion_times[pos_key] = event["timestamp"]
-                self.jig_operator_ids[pos_key] = event["operator_id"]
+                self.jig_operator_ids[pos_key] = event["operator_id"] or UNKNOWN_OPERATOR_ID
 
 if __name__ == "__main__":
     root = tk.Tk()

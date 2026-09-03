@@ -15,6 +15,7 @@ if "tkinter" not in sys.modules:
     sys.modules["tkinter"] = tkinter_stub
 
 from wardrobe_manager import (
+    UNKNOWN_OPERATOR_ID,
     WardrobeManager,
     calculate_remaining_time,
     format_history_entry,
@@ -64,6 +65,8 @@ class TimerCalculationTests(unittest.TestCase):
             validate_operator_id("ABC")
         with self.assertRaises(ValueError):
             validate_operator_id("ABCDE")
+        with self.assertRaises(ValueError):
+            validate_operator_id("A-12")
 
     def test_remaining_time_can_be_restored_from_history_timestamp(self):
         inserted = datetime(2026, 1, 1, 12, 0, 0)
@@ -147,6 +150,29 @@ class TimerCalculationTests(unittest.TestCase):
 
             self.assertEqual(manager.wardrobe_state, {(0, 0, 0, 0): 7})
             self.assertEqual(manager.jig_operator_ids, {(0, 0, 0, 0): "A1B2"})
+        finally:
+            os.unlink(history_file)
+
+    def test_load_history_uses_fallback_operator_id_for_legacy_entries(self):
+        with NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as history:
+            history.write(
+                "[01-01-2026 12:00:00] JIG #7 -> "
+                "Półka 1, Rząd 1, Kolumna 1, Pozycja 1\n"
+            )
+            history_file = history.name
+        try:
+            manager = WardrobeManager.__new__(WardrobeManager)
+            manager.history_file = history_file
+            manager.wardrobe_state = {}
+            manager.jig_timers = {}
+            manager.jig_insertion_times = {}
+            manager.expired_jigs = set()
+            manager.jig_operator_ids = {}
+
+            manager.load_history()
+
+            self.assertEqual(manager.wardrobe_state, {(0, 0, 0, 0): 7})
+            self.assertEqual(manager.jig_operator_ids, {(0, 0, 0, 0): UNKNOWN_OPERATOR_ID})
         finally:
             os.unlink(history_file)
 

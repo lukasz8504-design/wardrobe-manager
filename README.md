@@ -60,7 +60,7 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 ## Użytkowanie
 
 1. **Wpisz numer JIG** w pole tekstowe i naciśnij Enter lub kliknij "Potwierdź"
-2. **Wpisz OPERATOR ID** - dokładnie 4 znaki
+2. **Wpisz OPERATOR ID** - dokładnie 4 znaki alfanumeryczne
 3. **Kliknij na pozycję na półce** aby umieścić lub usunąć JIG z wybranej pozycji
 4. **Timer** automatycznie uruchomi się dla każdego JIG osobno - liczby od 100 minut do 0
 5. **Każdy JIG wyświetla**:
