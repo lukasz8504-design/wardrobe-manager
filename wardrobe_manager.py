@@ -239,7 +239,13 @@ class WardrobeManager:
     def run_jig_timer(self, pos_key):
         """Działanie timera dla konkretnego JIG"""
         while pos_key in self.jig_timers and self.jig_timers[pos_key] > 0:
-            self.jig_timers[pos_key] -= 1
+            insertion_time = self.jig_insertion_times.get(pos_key)
+            if insertion_time is not None:
+                self.jig_timers[pos_key] = calculate_remaining_time(
+                    insertion_time, self.initial_time
+                )
+            else:
+                self.jig_timers[pos_key] -= 1
             self.update_display()
             time.sleep(1)
         
@@ -250,21 +256,24 @@ class WardrobeManager:
             self.save_state()
             self.update_display()
     
-    def start_all_timers(self):
+    def start_all_timers(self, current_time=None):
         """Uruchomienie wszystkich timerów dla JIG z poprzedniej sesji"""
+        current_time = current_time or datetime.now()
         for pos_key in list(self.wardrobe_state):
             insertion_time = self.jig_insertion_times.get(pos_key)
             if insertion_time is None:
                 self.jig_timers[pos_key] = self.initial_time * 60
             else:
                 self.jig_timers[pos_key] = calculate_remaining_time(
-                    insertion_time, self.initial_time
+                    insertion_time, self.initial_time, current_time
                 )
 
             if self.jig_timers[pos_key] <= 0:
                 self.expired_jigs.add(pos_key)
             else:
                 self.start_jig_timer(pos_key)
+
+        self.update_display()
     
     def get_color_for_time(self, remaining_seconds):
         """Zwraca kolory na podstawie pozostałego czasu"""
