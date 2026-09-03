@@ -4,8 +4,46 @@ import configparser
 import json
 import os
 from datetime import datetime
+import re
 from threading import Thread
 import time
+
+
+HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
+
+
+def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
+    """Return the remaining timer seconds based on the insertion timestamp."""
+    current_time = current_time or datetime.now()
+    return max(0, initial_minutes * 60 - (current_time - insertion_time).total_seconds())
+
+
+def parse_history_line(line):
+    """Parse a history line into its event data, or return None for old/invalid lines."""
+    pattern = (
+        r"^\[(?P<timestamp>[^\]]+)\]\s+JIG\s+#(?P<jig>\d+)\s+"
+        r"(?P<action>->|<-)\s+Półka\s+(?P<shelf>\d+),\s+Rząd\s+(?P<row>\d+),\s+"
+        r"Kolumna\s+(?P<col>\d+),\s+Pozycja\s+(?P<position>\d+)"
+    )
+    match = re.match(pattern, line.strip())
+    if not match:
+        return None
+    try:
+        timestamp = datetime.strptime(match.group("timestamp"), HISTORY_TIMESTAMP_FORMAT)
+    except ValueError:
+        return None
+    return {
+        "timestamp": timestamp,
+        "jig": int(match.group("jig")),
+        "position": (
+            int(match.group("shelf")) - 1,
+            int(match.group("row")) - 1,
+            int(match.group("col")) - 1,
+            int(match.group("position")) - 1,
+        ),
+        "action": "insert" if match.group("action") == "->" else "remove",
+    }
+
 
 class WardrobeManager:
     def __init__(self, root):
@@ -52,10 +90,12 @@ class WardrobeManager:
         self.jig_timers = {}  # {pos_key: remaining_time_in_seconds}
         self.jig_insertion_times = {}  # {pos_key: insertion_timestamp}
         self.timer_threads = {}  # {pos_key: thread}
+        self.expired_jigs = set()
         self.current_jig = None
         
         # Wczytanie stanu szafy
         self.wardrobe_state = self.load_state()
+        self.load_history()
         
         # GUI
         self.setup_ui()
@@ -156,6 +196,9 @@ class WardrobeManager:
         
         # Jeśli pozycja jest już zajęta, usuń poprzedni JIG
         if pos_key in self.wardrobe_state:
+            self.save_to_history(
+                self.wardrobe_state[pos_key], shelf, row, col, jig, action="remove"
+            )
             del self.wardrobe_state[pos_key]
             # Zatrzymaj timer dla tego JIG
             if pos_key in self.jig_timers:
@@ -164,6 +207,7 @@ class WardrobeManager:
                 del self.jig_insertion_times[pos_key]
             if pos_key in self.timer_threads:
                 del self.timer_threads[pos_key]
+            self.expired_jigs.discard(pos_key)
         else:
             # Dodaj nowy JIG
             self.wardrobe_state[pos_key] = self.current_jig
@@ -175,7 +219,7 @@ class WardrobeManager:
             self.jig_insertion_times[pos_key] = datetime.now()
             
             # Zapisz do historii
-            self.save_to_history(self.current_jig, shelf, row, col, jig)
+            self.save_to_history(self.current_jig, shelf, row, col, jig, action="insert")
             
             # Uruchom timer dla tego JIG
             self.start_jig_timer(pos_key)
@@ -202,37 +246,25 @@ class WardrobeManager:
         # Czasami usun timer
         if pos_key in self.jig_timers and self.jig_timers[pos_key] <= 0:
             messagebox.showinfo("Timer", f"Czas się skończył dla JIG na pozycji {pos_key}!")
-            if pos_key in self.wardrobe_state:
-                del self.wardrobe_state[pos_key]
-                del self.jig_timers[pos_key]
-                if pos_key in self.jig_insertion_times:
-                    del self.jig_insertion_times[pos_key]
-                self.save_state()
-                self.update_display()
+            self.expired_jigs.add(pos_key)
+            self.save_state()
+            self.update_display()
     
     def start_all_timers(self):
         """Uruchomienie wszystkich timerów dla JIG z poprzedniej sesji"""
-        for pos_key in self.wardrobe_state.keys():
-            if pos_key not in self.jig_timers:
-                # Porównaj czas włożenia JIG z aktualnym czasem
-                if pos_key in self.jig_insertion_times:
-                    insertion_time = self.jig_insertion_times[pos_key]
-                    elapsed_time = (datetime.now() - insertion_time).total_seconds()
-                    remaining_time = (self.initial_time * 60) - elapsed_time
-                    
-                    if remaining_time > 0:
-                        self.jig_timers[pos_key] = remaining_time
-                    else:
-                        # Czas się skończył, usuń JIG
-                        del self.wardrobe_state[pos_key]
-                        if pos_key in self.jig_insertion_times:
-                            del self.jig_insertion_times[pos_key]
-                        self.save_state()
-                        continue
-                else:
-                    self.jig_timers[pos_key] = self.initial_time * 60
-            
-            self.start_jig_timer(pos_key)
+        for pos_key in list(self.wardrobe_state):
+            insertion_time = self.jig_insertion_times.get(pos_key)
+            if insertion_time is None:
+                self.jig_timers[pos_key] = self.initial_time * 60
+            else:
+                self.jig_timers[pos_key] = calculate_remaining_time(
+                    insertion_time, self.initial_time
+                )
+
+            if self.jig_timers[pos_key] <= 0:
+                self.expired_jigs.add(pos_key)
+            else:
+                self.start_jig_timer(pos_key)
     
     def get_color_for_time(self, remaining_seconds):
         """Zwraca kolory na podstawie pozostałego czasu"""
@@ -258,6 +290,8 @@ class WardrobeManager:
                 jig_num = self.wardrobe_state[pos_key]
                 remaining_time = self.jig_timers.get(pos_key, self.initial_time * 60)
                 time_str = self.format_time(remaining_time)
+                if pos_key in self.expired_jigs:
+                    time_str += "\nNIE WYJĘTY"
                 
                 # Kolorowanie na podstawie czasu
                 bg_color, text_color = self.get_color_for_time(remaining_time)
@@ -272,6 +306,10 @@ class WardrobeManager:
     
     def clear_all(self):
         """Czyszczenie wszystkiego"""
+        for pos_key, jig_num in list(self.wardrobe_state.items()):
+            self.save_to_history(
+                jig_num, pos_key[0], pos_key[1], pos_key[2], pos_key[3], action="remove"
+            )
         self.jig_timers.clear()
         self.jig_insertion_times.clear()
         self.timer_threads.clear()
@@ -282,12 +320,16 @@ class WardrobeManager:
         self.status_label.config(text="Czyszczenie zakończone. Gotów na nowy numer.", bg='lightyellow')
         self.jig_entry.delete(0, tk.END)
     
-    def save_to_history(self, jig_num, shelf, row, col, jig_idx):
+    def save_to_history(self, jig_num, shelf, row, col, jig_idx, action="insert"):
         """Zapis do pliku historii"""
         now = datetime.now()
-        timestamp = now.strftime("%d-%m-%Y %H:%M:%S")
+        timestamp = now.strftime(HISTORY_TIMESTAMP_FORMAT)
+        marker = "->" if action == "insert" else "<-"
         
-        history_entry = f"[{timestamp}] JIG #{jig_num} -> Półka {shelf + 1}, Rząd {row + 1}, Kolumna {col + 1}, Pozycja {jig_idx + 1}\n"
+        history_entry = (
+            f"[{timestamp}] JIG #{jig_num} {marker} Półka {shelf + 1}, "
+            f"Rząd {row + 1}, Kolumna {col + 1}, Pozycja {jig_idx + 1}\n"
+        )
         
         with open(self.history_file, 'a', encoding='utf-8') as f:
             f.write(history_entry)
@@ -344,6 +386,35 @@ class WardrobeManager:
             except:
                 pass
         return {}
+
+    def load_history(self):
+        """Restore active insertion timestamps and apply recorded removals."""
+        if not os.path.exists(self.history_file):
+            return
+        try:
+            with open(self.history_file, "r", encoding="utf-8") as history:
+                events = [parse_history_line(line) for line in history]
+        except OSError:
+            return
+
+        latest_events = {}
+        for event in events:
+            if event is not None and (
+                event["position"] not in latest_events
+                or event["timestamp"] >= latest_events[event["position"]]["timestamp"]
+            ):
+                latest_events[event["position"]] = event
+
+        for pos_key, event in latest_events.items():
+            if event["action"] == "remove":
+                if pos_key in self.wardrobe_state:
+                    del self.wardrobe_state[pos_key]
+                self.jig_timers.pop(pos_key, None)
+                self.jig_insertion_times.pop(pos_key, None)
+                self.expired_jigs.discard(pos_key)
+            else:
+                self.wardrobe_state[pos_key] = event["jig"]
+                self.jig_insertion_times[pos_key] = event["timestamp"]
 
 if __name__ == "__main__":
     root = tk.Tk()

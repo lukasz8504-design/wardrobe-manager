@@ -68,9 +68,9 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
      - Pomarańczowy - gdy pozostało od 5 minut do 1 minuty
      - Czerwony - gdy pozostało od 1 minuty do 0
 
-5. **Historia** wszystkich operacji jest zapisywana w pliku `history.txt` ze znacznikami czasowymi
+5. **Historia** wszystkich operacji jest zapisywana w pliku `history.txt` ze znacznikami czasowymi. `->` oznacza włożenie, a `<-` wyjęcie JIG-a.
 6. **Stan szafy** jest zapisywany w pliku `wardrobe_state.json` wraz z czasami dla każdego JIG i przywracany przy restarcie aplikacji
-7. **Porównanie czasów** - Przy restarcie aplikacji system porówna czasy włożenia JIG z aktualnym czasem i automatycznie obliczy pozostały czas dla każdego JIG
+7. **Porównanie czasów** - Przy restarcie aplikacji system odczytuje ostatnie zdarzenie z historii, porównuje czas włożenia z aktualnym czasem i automatycznie oblicza pozostały czas dla każdego JIG. Po upływie `initial_time` JIG pozostaje widoczny jako `NIE WYJĘTY`, dopóki nie zostanie ręcznie wyjęty.
 
 ## Nowe cechy aplikacji (v3)
 
