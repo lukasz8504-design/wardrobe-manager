@@ -54,7 +54,36 @@ class FakeLabel:
         self.props.update(kwargs)
 
 
+class FakeRoot:
+    def focus_set(self):
+        pass
+
+
 class TimerCalculationTests(unittest.TestCase):
+    def build_flow_manager(self, jig_value="", operator_value=""):
+        manager = WardrobeManager.__new__(WardrobeManager)
+        manager.root = FakeRoot()
+        manager.jig_entry = FakeEntry(jig_value)
+        manager.operator_entry = FakeEntry(operator_value)
+        manager.status_label = FakeLabel()
+        manager.current_jig = None
+        manager.current_operator_id = None
+        manager.input_stage = "jig"
+        manager.history_file = "/tmp/history.txt"
+        manager.state_file = "/tmp/state.json"
+        manager.initial_time = 100
+        manager.wardrobe_state = {}
+        manager.jig_timers = {}
+        manager.jig_insertion_times = {}
+        manager.timer_threads = {}
+        manager.expired_jigs = set()
+        manager.jig_operator_ids = {}
+        manager.update_display = lambda: None
+        manager.save_state = lambda: None
+        manager.start_jig_timer = lambda pos_key: None
+        manager.save_to_history = lambda *args, **kwargs: None
+        return manager
+
     def test_remaining_time_uses_elapsed_time(self):
         inserted = datetime(2026, 1, 1, 12, 0, 0)
         now = inserted + timedelta(minutes=12, seconds=30)
@@ -87,6 +116,10 @@ class TimerCalculationTests(unittest.TestCase):
             "[01-01-2026 12:00:00] JIG #7 | OPERATOR ID: A1B2 -> Półka 1, Rząd 2, Kolumna 1, Pozycja 2\n",
         )
 
+    def test_history_entry_formatter_rejects_invalid_operator_id(self):
+        with self.assertRaises(ValueError):
+            format_history_entry(7, 0, 1, 0, 1, operator_id="BAD!")
+
     def test_validate_operator_id_accepts_exactly_four_characters(self):
         self.assertEqual(validate_operator_id(" A1B2 "), "A1B2")
 
@@ -97,6 +130,64 @@ class TimerCalculationTests(unittest.TestCase):
             validate_operator_id("ABCDE")
         with self.assertRaises(ValueError):
             validate_operator_id("A-12")
+
+    def test_input_jig_moves_to_operator_stage(self):
+        manager = self.build_flow_manager(jig_value="12")
+
+        manager.input_jig()
+
+        self.assertEqual(manager.current_jig, 12)
+        self.assertEqual(manager.input_stage, "operator")
+        self.assertEqual(manager.jig_entry.state, "disabled")
+        self.assertEqual(manager.operator_entry.state, "normal")
+
+    def test_input_operator_rejects_invalid_id_and_keeps_operator_stage(self):
+        messages = []
+        from wardrobe_manager import messagebox
+
+        original_showerror = messagebox.showerror
+        messagebox.showerror = lambda title, msg: messages.append(msg)
+        try:
+            manager = self.build_flow_manager(operator_value="A-12")
+            manager.current_jig = 12
+            manager.set_input_stage("operator")
+
+            manager.input_operator()
+
+            self.assertEqual(messages, ["OPERATOR ID musi mieć dokładnie 4 znaki alfanumeryczne"])
+            self.assertEqual(manager.input_stage, "operator")
+            self.assertIsNone(manager.current_operator_id)
+        finally:
+            messagebox.showerror = original_showerror
+
+    def test_input_operator_moves_to_position_stage_for_valid_id(self):
+        manager = self.build_flow_manager(operator_value="AB12")
+        manager.current_jig = 12
+        manager.set_input_stage("operator")
+
+        manager.input_operator()
+
+        self.assertEqual(manager.current_operator_id, "AB12")
+        self.assertEqual(manager.input_stage, "position")
+        self.assertEqual(manager.operator_entry.state, "disabled")
+
+    def test_select_position_requires_operator_id(self):
+        warnings = []
+        from wardrobe_manager import messagebox
+
+        original_showwarning = messagebox.showwarning
+        messagebox.showwarning = lambda title, msg: warnings.append(msg)
+        try:
+            manager = self.build_flow_manager()
+            manager.current_jig = 12
+            manager.current_operator_id = None
+
+            manager.select_position(0, 0, 0, 0)
+
+            self.assertEqual(warnings, ["Najpierw wprowadź OPERATOR ID"])
+            self.assertEqual(manager.wardrobe_state, {})
+        finally:
+            messagebox.showwarning = original_showwarning
 
     def test_remaining_time_can_be_restored_from_history_timestamp(self):
         inserted = datetime(2026, 1, 1, 12, 0, 0)

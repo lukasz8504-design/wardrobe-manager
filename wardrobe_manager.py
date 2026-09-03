@@ -10,7 +10,7 @@ import time
 
 
 HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
-UNKNOWN_OPERATOR_ID = "BRAK"
+UNKNOWN_OPERATOR_ID = "----"
 OPERATOR_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{4}$")
 
 
@@ -24,7 +24,7 @@ def parse_history_line(line):
     """Parse a history line into its event data, or return None for old/invalid lines."""
     pattern = (
         r"^\[(?P<timestamp>[^\]]+)\]\s+JIG\s+#(?P<jig>\d+)\s+"
-        r"(?:\|\s+OPERATOR\s+ID:\s+(?P<operator_id>[A-Za-z0-9]{4})\s+)?"
+        r"(?:\|\s+OPERATOR\s+ID:\s+(?P<operator_id>(?:[A-Za-z0-9]{4}|----))\s+)?"
         r"(?P<action>->|<-)\s+Półka\s+(?P<shelf>\d+),\s+Rząd\s+(?P<row>\d+),\s+"
         r"Kolumna\s+(?P<col>\d+),\s+Pozycja\s+(?P<position>\d+)"
     )
@@ -57,10 +57,19 @@ def validate_operator_id(operator_id):
     return normalized_operator_id
 
 
+def validate_history_operator_id(operator_id):
+    """Return a validated operator id for history, allowing the legacy fallback marker."""
+    if operator_id == UNKNOWN_OPERATOR_ID:
+        return operator_id
+    return validate_operator_id(operator_id)
+
+
 def format_history_entry(jig_num, shelf, row, col, jig_idx, action="insert", operator_id=None, timestamp=None):
     """Build a single history entry line in the current history format."""
     timestamp = (timestamp or datetime.now()).strftime(HISTORY_TIMESTAMP_FORMAT)
     marker = "->" if action == "insert" else "<-"
+    if operator_id is not None:
+        operator_id = validate_history_operator_id(operator_id)
     operator_fragment = f" | OPERATOR ID: {operator_id}" if operator_id else ""
     return (
         f"[{timestamp}] JIG #{jig_num}{operator_fragment} {marker} "
