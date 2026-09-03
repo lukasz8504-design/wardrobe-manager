@@ -1,5 +1,7 @@
 import unittest
 from datetime import datetime, timedelta
+import os
+from tempfile import NamedTemporaryFile
 
 from wardrobe_manager import WardrobeManager, calculate_remaining_time, parse_history_line
 
@@ -42,6 +44,28 @@ class TimerCalculationTests(unittest.TestCase):
 
         self.assertEqual(manager.jig_timers[(0, 0, 0, 0)], 0)
         self.assertIn((0, 0, 0, 0), manager.expired_jigs)
+
+    def test_empty_history_does_not_restore_saved_jigs(self):
+        with NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as history:
+            history_file = history.name
+        try:
+            manager = WardrobeManager.__new__(WardrobeManager)
+            manager.history_file = history_file
+            manager.wardrobe_state = {(0, 0, 0, 0): 7}
+            manager.jig_timers = {(0, 0, 0, 0): 6000}
+            manager.jig_insertion_times = {
+                (0, 0, 0, 0): datetime(2026, 1, 1, 12, 0, 0)
+            }
+            manager.expired_jigs = {(0, 0, 0, 0)}
+
+            manager.load_history()
+
+            self.assertEqual(manager.wardrobe_state, {})
+            self.assertEqual(manager.jig_timers, {})
+            self.assertEqual(manager.jig_insertion_times, {})
+            self.assertEqual(manager.expired_jigs, set())
+        finally:
+            os.unlink(history_file)
 
 
 if __name__ == "__main__":

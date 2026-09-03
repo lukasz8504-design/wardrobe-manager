@@ -406,6 +406,12 @@ class WardrobeManager:
         except OSError:
             return
 
+        # History is authoritative when the file exists, including when it is empty.
+        self.wardrobe_state.clear()
+        self.jig_timers.clear()
+        self.jig_insertion_times.clear()
+        self.expired_jigs.clear()
+
         latest_events = {}
         for event in events:
             if event is not None and (
