@@ -45,6 +45,8 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 ### [COLORS]
 - Kolory tła i tekstu dla różnych stanów timera
 - Format RGB (hex): #RRGGBB
+- `empty_bg` - Kolor tła pustej pozycji
+- `empty_text` - Kolor tekstu pustej pozycji
 
 ### [FILES]
 - `history_file` - Ścieżka do pliku historii (domyślnie `history.txt`)
@@ -58,19 +60,20 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 ## Użytkowanie
 
 1. **Wpisz numer JIG** w pole tekstowe i naciśnij Enter lub kliknij "Potwierdź"
-2. **Kliknij na pozycję na półce** aby umieścić JIG na wybranej pozycji
-3. **Timer** automatycznie uruchomi się dla każdego JIG osobno - liczby od 100 minut do 0
-4. **Każdy JIG wyświetla**:
+2. **Wpisz OPERATOR ID** - dokładnie 4 znaki
+3. **Kliknij na pozycję na półce** aby umieścić lub usunąć JIG z wybranej pozycji
+4. **Timer** automatycznie uruchomi się dla każdego JIG osobno - liczby od 100 minut do 0
+5. **Każdy JIG wyświetla**:
    - Numer JIG
    - Pozostały czas (MM:SS)
    - Kolor zmieniający się na podstawie czasu:
      - Szary (normalny) - gdy pozostało więcej niż 5 minut
      - Pomarańczowy - gdy pozostało od 5 minut do 1 minuty
      - Czerwony - gdy pozostało od 1 minuty do 0
-
-5. **Historia** wszystkich operacji jest zapisywana w pliku `history.txt` ze znacznikami czasowymi. `->` oznacza włożenie, a `<-` wyjęcie JIG-a.
-6. **Stan szafy** jest zapisywany w pliku `wardrobe_state.json` wraz z czasami dla każdego JIG i przywracany przy restarcie aplikacji
-7. **Porównanie czasów** - Przy restarcie aplikacji system odczytuje ostatnie zdarzenie z historii, porównuje czas włożenia z aktualnym czasem i automatycznie oblicza pozostały czas dla każdego JIG. Po upływie `initial_time` JIG pozostaje widoczny jako `NIE WYJĘTY`, dopóki nie zostanie ręcznie wyjęty.
+ 
+6. **Historia** wszystkich operacji jest zapisywana w pliku `history.txt` ze znacznikami czasowymi razem z `OPERATOR ID`. `->` oznacza włożenie, a `<-` wyjęcie JIG-a.
+7. **Stan szafy** jest zapisywany w pliku `wardrobe_state.json` wraz z czasami dla każdego JIG i przywracany przy restarcie aplikacji
+8. **Porównanie czasów** - Przy restarcie aplikacji system odczytuje ostatnie zdarzenie z historii, porównuje czas włożenia z aktualnym czasem i automatycznie oblicza pozostały czas dla każdego JIG. Po upływie `initial_time` JIG pozostaje widoczny jako `NIE WYJĘTY`, dopóki nie zostanie ręcznie wyjęty.
 
 ## Nowe cechy aplikacji (v3)
 

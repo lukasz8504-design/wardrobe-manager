@@ -22,6 +22,7 @@ def parse_history_line(line):
     """Parse a history line into its event data, or return None for old/invalid lines."""
     pattern = (
         r"^\[(?P<timestamp>[^\]]+)\]\s+JIG\s+#(?P<jig>\d+)\s+"
+        r"(?:\|\s+OPERATOR\s+ID:\s+(?P<operator_id>\S{4})\s+)?"
         r"(?P<action>->|<-)\s+Półka\s+(?P<shelf>\d+),\s+Rząd\s+(?P<row>\d+),\s+"
         r"Kolumna\s+(?P<col>\d+),\s+Pozycja\s+(?P<position>\d+)"
     )
@@ -35,6 +36,7 @@ def parse_history_line(line):
     return {
         "timestamp": timestamp,
         "jig": int(match.group("jig")),
+        "operator_id": match.group("operator_id"),
         "position": (
             int(match.group("shelf")) - 1,
             int(match.group("row")) - 1,
@@ -43,6 +45,25 @@ def parse_history_line(line):
         ),
         "action": "insert" if match.group("action") == "->" else "remove",
     }
+
+
+def validate_operator_id(operator_id):
+    """Return a cleaned operator id or raise ValueError when it is invalid."""
+    normalized_operator_id = operator_id.strip()
+    if len(normalized_operator_id) != 4:
+        raise ValueError("OPERATOR ID musi mieć dokładnie 4 znaki")
+    return normalized_operator_id
+
+
+def format_history_entry(jig_num, shelf, row, col, jig_idx, action="insert", operator_id=None, timestamp=None):
+    """Build a single history entry line in the current history format."""
+    timestamp = (timestamp or datetime.now()).strftime(HISTORY_TIMESTAMP_FORMAT)
+    marker = "->" if action == "insert" else "<-"
+    operator_fragment = f" | OPERATOR ID: {operator_id}" if operator_id else ""
+    return (
+        f"[{timestamp}] JIG #{jig_num}{operator_fragment} {marker} "
+        f"Półka {shelf + 1}, Rząd {row + 1}, Kolumna {col + 1}, Pozycja {jig_idx + 1}\n"
+    )
 
 
 class WardrobeManager:
@@ -72,6 +93,8 @@ class WardrobeManager:
         self.normal_text = self.config.get('COLORS', 'normal_text')
         self.orange_text = self.config.get('COLORS', 'orange_text')
         self.red_text = self.config.get('COLORS', 'red_text')
+        self.empty_bg = self.config.get('COLORS', 'empty_bg', fallback='white')
+        self.empty_text = self.config.get('COLORS', 'empty_text', fallback='black')
         
         # Wygląd
         self.jig_width = self.config.getint('APPEARANCE', 'square_width')
@@ -92,6 +115,9 @@ class WardrobeManager:
         self.timer_threads = {}  # {pos_key: thread}
         self.expired_jigs = set()
         self.current_jig = None
+        self.current_operator_id = None
+        self.jig_operator_ids = {}
+        self.input_stage = "jig"
         
         # Wczytanie stanu szafy
         self.wardrobe_state = self.load_state()
@@ -116,8 +142,13 @@ class WardrobeManager:
         self.jig_entry = tk.Entry(top_frame, width=10, font=('Arial', 12))
         self.jig_entry.pack(side=tk.LEFT, padx=5)
         self.jig_entry.bind('<Return>', lambda e: self.input_jig())
-        
-        tk.Button(top_frame, text="Potwierdź", command=self.input_jig, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+
+        tk.Label(top_frame, text="OPERATOR ID:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
+        self.operator_entry = tk.Entry(top_frame, width=10, font=('Arial', 12))
+        self.operator_entry.pack(side=tk.LEFT, padx=5)
+        self.operator_entry.bind('<Return>', lambda e: self.input_operator())
+         
+        tk.Button(top_frame, text="Potwierdź", command=self.confirm_current_step, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         tk.Button(top_frame, text="Wyczyść wszystko", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         
         # Status
@@ -170,26 +201,84 @@ class WardrobeManager:
                         self.shelf_buttons[pos_key] = jig_btn
         
         self.update_display()
-    
+        self.set_input_stage("jig")
+
+    def confirm_current_step(self):
+        """Confirm the currently expected input step."""
+        if self.input_stage == "jig":
+            self.input_jig()
+        elif self.input_stage == "operator":
+            self.input_operator()
+        else:
+            self.status_label.config(
+                text="Dane zapisane. Kliknij pozycję na półce, aby zakończyć operację.",
+                bg='lightyellow'
+            )
+
+    def set_input_stage(self, stage, status_text=None, status_bg='lightyellow'):
+        """Update the active input stage and keep entry fields in sync with it."""
+        self.input_stage = stage
+        self.jig_entry.config(state=tk.NORMAL if stage == "jig" else tk.DISABLED)
+        self.operator_entry.config(state=tk.NORMAL if stage == "operator" else tk.DISABLED)
+
+        if stage == "jig":
+            self.jig_entry.focus_set()
+        elif stage == "operator":
+            self.operator_entry.focus_set()
+
+        if status_text is None:
+            if stage == "jig":
+                status_text = "Czekam na numer JIG..."
+            elif stage == "operator":
+                status_text = f"JIG #{self.current_jig} zapisany. Wprowadź OPERATOR ID (dokładnie 4 znaki)."
+            else:
+                status_text = (
+                    f"JIG #{self.current_jig} / OPERATOR ID {self.current_operator_id}. "
+                    "Kliknij pozycję na półce."
+                )
+
+        self.status_label.config(text=status_text, bg=status_bg)
+     
     def input_jig(self):
         """Wczytanie numeru JIG"""
+        if self.input_stage != "jig":
+            self.set_input_stage("operator")
+            return
+
         try:
             jig_num = int(self.jig_entry.get())
             if jig_num < 0:
                 messagebox.showerror("Błąd", "Numer JIG musi być dodatni")
                 return
-            
+             
             self.current_jig = jig_num
             self.jig_entry.delete(0, tk.END)
-            self.status_label.config(text=f"Wybrałeś JIG #{jig_num}. Teraz kliknij na pozycję na półce.", 
-                                    bg='lightyellow')
+            self.set_input_stage("operator")
         except ValueError:
             messagebox.showerror("Błąd", "Wprowadź prawidłowy numer JIG")
-    
+
+    def input_operator(self):
+        """Wczytanie identyfikatora operatora."""
+        if self.input_stage != "operator":
+            self.set_input_stage("jig")
+            return
+
+        try:
+            self.current_operator_id = validate_operator_id(self.operator_entry.get())
+        except ValueError as exc:
+            messagebox.showerror("Błąd", str(exc))
+            return
+
+        self.operator_entry.delete(0, tk.END)
+        self.set_input_stage("position")
+     
     def select_position(self, shelf, row, col, jig):
         """Wybór pozycji na półce"""
         if self.current_jig is None:
             messagebox.showwarning("Ostrzeżenie", "Najpierw wprowadź numer JIG")
+            return
+        if self.current_operator_id is None:
+            messagebox.showwarning("Ostrzeżenie", "Najpierw wprowadź OPERATOR ID")
             return
         
         pos_key = (shelf, row, col, jig)
@@ -197,7 +286,13 @@ class WardrobeManager:
         # Jeśli pozycja jest już zajęta, usuń poprzedni JIG
         if pos_key in self.wardrobe_state:
             self.save_to_history(
-                self.wardrobe_state[pos_key], shelf, row, col, jig, action="remove"
+                self.wardrobe_state[pos_key],
+                shelf,
+                row,
+                col,
+                jig,
+                action="remove",
+                operator_id=self.jig_operator_ids.get(pos_key),
             )
             del self.wardrobe_state[pos_key]
             # Zatrzymaj timer dla tego JIG
@@ -208,26 +303,41 @@ class WardrobeManager:
             if pos_key in self.timer_threads:
                 del self.timer_threads[pos_key]
             self.expired_jigs.discard(pos_key)
+            self.jig_operator_ids.pop(pos_key, None)
         else:
             # Dodaj nowy JIG
             self.wardrobe_state[pos_key] = self.current_jig
-            
+            self.jig_operator_ids[pos_key] = self.current_operator_id
+             
             # Inicjalizuj timer dla tego JIG
             self.jig_timers[pos_key] = self.initial_time * 60
             
             # Zapisz czas włożenia JIG
             self.jig_insertion_times[pos_key] = datetime.now()
-            
+             
             # Zapisz do historii
-            self.save_to_history(self.current_jig, shelf, row, col, jig, action="insert")
-            
+            self.save_to_history(
+                self.current_jig,
+                shelf,
+                row,
+                col,
+                jig,
+                action="insert",
+                operator_id=self.current_operator_id,
+            )
+             
             # Uruchom timer dla tego JIG
             self.start_jig_timer(pos_key)
         
         self.save_state()
         self.update_display()
         self.current_jig = None
-        self.status_label.config(text="Pozycja zaktualizowana. Wpisz następny JIG.", bg='lightgreen')
+        self.current_operator_id = None
+        self.set_input_stage(
+            "jig",
+            status_text="Pozycja zaktualizowana. Wpisz następny numer JIG.",
+            status_bg='lightgreen'
+        )
     
     def start_jig_timer(self, pos_key):
         """Uruchomienie timera dla konkretnego JIG"""
@@ -311,37 +421,45 @@ class WardrobeManager:
                     fg=text_color
                 )
             else:
-                btn.config(text="", bg='white', fg='black')
+                btn.config(text="", bg=self.empty_bg, fg=self.empty_text)
     
     def clear_all(self):
         """Czyszczenie wszystkiego"""
         for pos_key, jig_num in list(self.wardrobe_state.items()):
             self.save_to_history(
-                jig_num, pos_key[0], pos_key[1], pos_key[2], pos_key[3], action="remove"
+                jig_num,
+                pos_key[0],
+                pos_key[1],
+                pos_key[2],
+                pos_key[3],
+                action="remove",
+                operator_id=self.jig_operator_ids.get(pos_key),
             )
         self.jig_timers.clear()
         self.jig_insertion_times.clear()
         self.timer_threads.clear()
         self.current_jig = None
+        self.current_operator_id = None
+        self.jig_operator_ids.clear()
         self.wardrobe_state.clear()
         self.save_state()
         self.update_display()
-        self.status_label.config(text="Czyszczenie zakończone. Gotów na nowy numer.", bg='lightyellow')
         self.jig_entry.delete(0, tk.END)
-    
-    def save_to_history(self, jig_num, shelf, row, col, jig_idx, action="insert"):
-        """Zapis do pliku historii"""
-        now = datetime.now()
-        timestamp = now.strftime(HISTORY_TIMESTAMP_FORMAT)
-        marker = "->" if action == "insert" else "<-"
-        
-        history_entry = (
-            f"[{timestamp}] JIG #{jig_num} {marker} Półka {shelf + 1}, "
-            f"Rząd {row + 1}, Kolumna {col + 1}, Pozycja {jig_idx + 1}\n"
+        self.operator_entry.delete(0, tk.END)
+        self.set_input_stage(
+            "jig",
+            status_text="Czyszczenie zakończone. Gotów na nowy numer JIG.",
+            status_bg='lightyellow'
         )
-        
+     
+    def save_to_history(self, jig_num, shelf, row, col, jig_idx, action="insert", operator_id=None):
+        """Zapis do pliku historii"""
         with open(self.history_file, 'a', encoding='utf-8') as f:
-            f.write(history_entry)
+            f.write(
+                format_history_entry(
+                    jig_num, shelf, row, col, jig_idx, action=action, operator_id=operator_id
+                )
+            )
     
     def save_state(self):
         """Zapis stanu szafy do JSON"""
@@ -403,6 +521,7 @@ class WardrobeManager:
         self.jig_timers.clear()
         self.jig_insertion_times.clear()
         self.expired_jigs.clear()
+        self.jig_operator_ids.clear()
 
         if not os.path.exists(self.history_file):
             return
@@ -427,9 +546,11 @@ class WardrobeManager:
                 self.jig_timers.pop(pos_key, None)
                 self.jig_insertion_times.pop(pos_key, None)
                 self.expired_jigs.discard(pos_key)
+                self.jig_operator_ids.pop(pos_key, None)
             else:
                 self.wardrobe_state[pos_key] = event["jig"]
                 self.jig_insertion_times[pos_key] = event["timestamp"]
+                self.jig_operator_ids[pos_key] = event["operator_id"]
 
 if __name__ == "__main__":
     root = tk.Tk()
