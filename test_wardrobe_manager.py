@@ -7,6 +7,9 @@ from tempfile import NamedTemporaryFile
 
 if "tkinter" not in sys.modules:
     tkinter_stub = types.ModuleType("tkinter")
+    tkinter_stub.NORMAL = "normal"
+    tkinter_stub.DISABLED = "disabled"
+    tkinter_stub.END = "end"
     tkinter_stub.messagebox = types.SimpleNamespace(
         showerror=lambda *args, **kwargs: None,
         showwarning=lambda *args, **kwargs: None,
@@ -15,12 +18,40 @@ if "tkinter" not in sys.modules:
     sys.modules["tkinter"] = tkinter_stub
 
 from wardrobe_manager import (
+    UNKNOWN_OPERATOR_ID,
     WardrobeManager,
     calculate_remaining_time,
     format_history_entry,
     parse_history_line,
     validate_operator_id,
 )
+
+
+class FakeEntry:
+    def __init__(self, value=""):
+        self.value = value
+        self.state = "normal"
+
+    def get(self):
+        return self.value
+
+    def delete(self, start, end):
+        self.value = ""
+
+    def config(self, **kwargs):
+        if "state" in kwargs:
+            self.state = kwargs["state"]
+
+    def focus_set(self):
+        pass
+
+
+class FakeLabel:
+    def __init__(self):
+        self.props = {}
+
+    def config(self, **kwargs):
+        self.props.update(kwargs)
 
 
 class TimerCalculationTests(unittest.TestCase):
@@ -171,7 +202,46 @@ class TimerCalculationTests(unittest.TestCase):
             manager.load_history()
 
             self.assertEqual(manager.wardrobe_state, {(0, 0, 0, 0): 7})
-            self.assertEqual(manager.jig_operator_ids, {(0, 0, 0, 0): None})
+            self.assertEqual(manager.jig_operator_ids, {})
+        finally:
+            os.unlink(history_file)
+
+    def test_clear_all_uses_fallback_operator_id_for_legacy_history(self):
+        with NamedTemporaryFile(mode="w+", encoding="utf-8", delete=False) as history:
+            history.write(
+                "[01-01-2026 12:00:00] JIG #7 -> "
+                "Półka 1, Rząd 1, Kolumna 1, Pozycja 1\n"
+            )
+            history_file = history.name
+        try:
+            manager = WardrobeManager.__new__(WardrobeManager)
+            manager.history_file = history_file
+            manager.wardrobe_state = {}
+            manager.jig_timers = {}
+            manager.jig_insertion_times = {}
+            manager.timer_threads = {}
+            manager.expired_jigs = set()
+            manager.jig_operator_ids = {}
+            manager.jig_entry = FakeEntry()
+            manager.operator_entry = FakeEntry()
+            manager.status_label = FakeLabel()
+            manager.update_display = lambda: None
+            manager.save_state = lambda: None
+            manager.current_jig = None
+            manager.current_operator_id = None
+
+            manager.load_history()
+            manager.clear_all()
+
+            with open(history_file, encoding="utf-8") as saved_history:
+                lines = saved_history.read().splitlines()
+
+            self.assertEqual(len(lines), 2)
+            self.assertEqual(
+                lines[0],
+                "[01-01-2026 12:00:00] JIG #7 -> Półka 1, Rząd 1, Kolumna 1, Pozycja 1",
+            )
+            self.assertIn(f"JIG #7 | OPERATOR ID: {UNKNOWN_OPERATOR_ID} <-", lines[-1])
         finally:
             os.unlink(history_file)
 
