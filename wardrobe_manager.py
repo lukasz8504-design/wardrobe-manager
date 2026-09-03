@@ -227,6 +227,8 @@ class WardrobeManager:
             self.jig_entry.focus_set()
         elif stage == "operator":
             self.operator_entry.focus_set()
+        elif hasattr(self, "root"):
+            self.root.focus_set()
 
         if status_text is None:
             if stage == "jig":
@@ -244,7 +246,16 @@ class WardrobeManager:
     def input_jig(self):
         """Wczytanie numeru JIG"""
         if self.input_stage != "jig":
-            self.set_input_stage("operator")
+            if self.input_stage == "operator":
+                self.status_label.config(
+                    text=f"JIG #{self.current_jig} zapisany. Wprowadź OPERATOR ID (dokładnie 4 znaki).",
+                    bg='lightyellow'
+                )
+            else:
+                self.status_label.config(
+                    text="Dane zapisane. Kliknij pozycję na półce, aby zakończyć operację.",
+                    bg='lightyellow'
+                )
             return
 
         try:
@@ -262,7 +273,13 @@ class WardrobeManager:
     def input_operator(self):
         """Wczytanie identyfikatora operatora."""
         if self.input_stage != "operator":
-            self.set_input_stage("jig")
+            if self.input_stage == "jig":
+                self.status_label.config(text="Najpierw wprowadź numer JIG.", bg='lightyellow')
+            else:
+                self.status_label.config(
+                    text="Dane zapisane. Kliknij pozycję na półce, aby zakończyć operację.",
+                    bg='lightyellow'
+                )
             return
 
         try:
