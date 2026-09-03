@@ -245,6 +245,38 @@ class TimerCalculationTests(unittest.TestCase):
         finally:
             os.unlink(history_file)
 
+    def test_select_position_remove_uses_current_operator_id(self):
+        with NamedTemporaryFile(mode="w+", encoding="utf-8", delete=False) as history:
+            history_path = history.name
+        try:
+            manager = WardrobeManager.__new__(WardrobeManager)
+            manager.history_file = history_path
+            manager.state_file = "/tmp/wardrobe-state.json"
+            manager.initial_time = 100
+            manager.wardrobe_state = {(0, 0, 0, 0): 7}
+            manager.jig_timers = {(0, 0, 0, 0): 6000}
+            manager.jig_insertion_times = {(0, 0, 0, 0): datetime(2026, 1, 1, 12, 0, 0)}
+            manager.timer_threads = {}
+            manager.expired_jigs = set()
+            manager.jig_operator_ids = {(0, 0, 0, 0): "OLD1"}
+            manager.current_jig = 99
+            manager.current_operator_id = "NEW2"
+            manager.jig_entry = FakeEntry()
+            manager.operator_entry = FakeEntry()
+            manager.status_label = FakeLabel()
+            manager.update_display = lambda: None
+            manager.save_state = lambda: None
+            manager.input_stage = "position"
+
+            manager.select_position(0, 0, 0, 0)
+
+            with open(history_path, encoding="utf-8") as saved_history:
+                line = saved_history.read().strip()
+
+            self.assertIn("JIG #7 | OPERATOR ID: NEW2 <-", line)
+        finally:
+            os.unlink(history_path)
+
 
 if __name__ == "__main__":
     unittest.main()
