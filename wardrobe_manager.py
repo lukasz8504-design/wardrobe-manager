@@ -398,6 +398,12 @@ class WardrobeManager:
 
     def load_history(self):
         """Restore active insertion timestamps and apply recorded removals."""
+        # No history means there are no JIGs to restore from a previous session.
+        self.wardrobe_state.clear()
+        self.jig_timers.clear()
+        self.jig_insertion_times.clear()
+        self.expired_jigs.clear()
+
         if not os.path.exists(self.history_file):
             return
         try:
@@ -405,12 +411,6 @@ class WardrobeManager:
                 events = [parse_history_line(line) for line in history]
         except OSError:
             return
-
-        # History is authoritative when the file exists, including when it is empty.
-        self.wardrobe_state.clear()
-        self.jig_timers.clear()
-        self.jig_insertion_times.clear()
-        self.expired_jigs.clear()
 
         latest_events = {}
         for event in events:
