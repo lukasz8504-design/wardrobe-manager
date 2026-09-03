@@ -397,7 +397,7 @@ class WardrobeManager:
         return {}
 
     def load_history(self):
-        """Restore active insertion timestamps and apply recorded removals."""
+        """Restore active JIGs from the ordered history log."""
         # No history means there are no JIGs to restore from a previous session.
         self.wardrobe_state.clear()
         self.jig_timers.clear()
@@ -412,24 +412,18 @@ class WardrobeManager:
         except OSError:
             return
 
-        latest_events = {}
+        active_insertions = {}
         for event in events:
-            if event is not None and (
-                event["position"] not in latest_events
-                or event["timestamp"] >= latest_events[event["position"]]["timestamp"]
-            ):
-                latest_events[event["position"]] = event
-
-        for pos_key, event in latest_events.items():
-            if event["action"] == "remove":
-                if pos_key in self.wardrobe_state:
-                    del self.wardrobe_state[pos_key]
-                self.jig_timers.pop(pos_key, None)
-                self.jig_insertion_times.pop(pos_key, None)
-                self.expired_jigs.discard(pos_key)
+            if event is None:
+                continue
+            if event["action"] == "insert":
+                active_insertions[event["position"]] = event
             else:
-                self.wardrobe_state[pos_key] = event["jig"]
-                self.jig_insertion_times[pos_key] = event["timestamp"]
+                active_insertions.pop(event["position"], None)
+
+        for pos_key, event in active_insertions.items():
+            self.wardrobe_state[pos_key] = event["jig"]
+            self.jig_insertion_times[pos_key] = event["timestamp"]
 
 if __name__ == "__main__":
     root = tk.Tk()
