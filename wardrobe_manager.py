@@ -10,12 +10,18 @@ import time
 
 
 HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
+OPERATOR_NUMBER_LENGTH = 4
 
 
 def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
     """Return the remaining timer seconds based on the insertion timestamp."""
     current_time = current_time or datetime.now()
     return max(0, initial_minutes * 60 - (current_time - insertion_time).total_seconds())
+
+
+def is_valid_operator_number(operator_number):
+    """Return whether an operator number has the required length."""
+    return len(operator_number) == OPERATOR_NUMBER_LENGTH
 
 
 def parse_history_line(line):
@@ -116,7 +122,19 @@ class WardrobeManager:
         self.jig_entry = tk.Entry(top_frame, width=10, font=('Arial', 12))
         self.jig_entry.pack(side=tk.LEFT, padx=5)
         self.jig_entry.bind('<Return>', lambda e: self.input_jig())
-        
+
+        tk.Label(top_frame, text="Numer operatora:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
+        validate_operator_number = self.root.register(self.validate_operator_number_length)
+        self.operator_entry = tk.Entry(
+            top_frame,
+            width=4,
+            font=('Arial', 12),
+            validate='key',
+            validatecommand=(validate_operator_number, '%P')
+        )
+        self.operator_entry.pack(side=tk.LEFT, padx=5)
+        self.operator_entry.bind('<Return>', lambda e: self.input_jig())
+
         tk.Button(top_frame, text="Potwierdź", command=self.input_jig, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         tk.Button(top_frame, text="Wyczyść wszystko", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         
@@ -170,9 +188,22 @@ class WardrobeManager:
                         self.shelf_buttons[pos_key] = jig_btn
         
         self.update_display()
-    
+
+    def validate_operator_number_length(self, value):
+        """Prevent entering more than the required number of operator characters."""
+        return len(value) <= OPERATOR_NUMBER_LENGTH
+
     def input_jig(self):
         """Wczytanie numeru JIG"""
+        operator_number = self.operator_entry.get()
+        if not is_valid_operator_number(operator_number):
+            messagebox.showerror(
+                "Błąd",
+                f"Numer operatora musi zawierać dokładnie {OPERATOR_NUMBER_LENGTH} znaki."
+            )
+            self.operator_entry.focus_set()
+            return
+
         try:
             jig_num = int(self.jig_entry.get())
             if jig_num < 0:
@@ -181,6 +212,7 @@ class WardrobeManager:
             
             self.current_jig = jig_num
             self.jig_entry.delete(0, tk.END)
+            self.operator_entry.delete(0, tk.END)
             self.status_label.config(text=f"Wybrałeś JIG #{jig_num}. Teraz kliknij na pozycję na półce.", 
                                     bg='lightyellow')
         except ValueError:
@@ -328,6 +360,7 @@ class WardrobeManager:
         self.update_display()
         self.status_label.config(text="Czyszczenie zakończone. Gotów na nowy numer.", bg='lightyellow')
         self.jig_entry.delete(0, tk.END)
+        self.operator_entry.delete(0, tk.END)
     
     def save_to_history(self, jig_num, shelf, row, col, jig_idx, action="insert"):
         """Zapis do pliku historii"""
