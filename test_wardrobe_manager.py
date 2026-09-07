@@ -3,10 +3,20 @@ from datetime import datetime, timedelta
 import os
 from tempfile import NamedTemporaryFile
 
-from wardrobe_manager import WardrobeManager, calculate_remaining_time, parse_history_line
+from wardrobe_manager import (
+    WardrobeManager,
+    calculate_remaining_time,
+    is_valid_operator_number,
+    parse_history_line,
+)
 
 
 class TimerCalculationTests(unittest.TestCase):
+    def test_operator_number_must_have_exactly_four_characters(self):
+        self.assertFalse(is_valid_operator_number("123"))
+        self.assertTrue(is_valid_operator_number("1234"))
+        self.assertFalse(is_valid_operator_number("12345"))
+
     def test_remaining_time_uses_elapsed_time(self):
         inserted = datetime(2026, 1, 1, 12, 0, 0)
         now = inserted + timedelta(minutes=12, seconds=30)

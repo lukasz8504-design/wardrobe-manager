@@ -57,7 +57,7 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 
 ## Użytkowanie
 
-1. **Wpisz numer JIG** w pole tekstowe i naciśnij Enter lub kliknij "Potwierdź"
+1. **Wpisz numer JIG i numer operatora** w pola tekstowe, a następnie naciśnij Enter lub kliknij "Potwierdź". Numer operatora jest wymagany i musi zawierać dokładnie 4 znaki.
 2. **Kliknij na pozycję na półce** aby umieścić JIG na wybranej pozycji
 3. **Timer** automatycznie uruchomi się dla każdego JIG osobno - liczby od 100 minut do 0
 4. **Każdy JIG wyświetla**:
