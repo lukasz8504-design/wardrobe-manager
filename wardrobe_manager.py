@@ -7,6 +7,7 @@ from datetime import datetime
 import re
 from threading import Thread
 import time
+import winsound
 
 
 HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
@@ -26,12 +27,40 @@ def is_valid_operator_number(operator_number):
 
 def parse_history_line(line):
     """Parse a history line into its event data, or return None for old/invalid lines."""
+    move_pattern = (
+        r"^\[(?P<timestamp>[^\]]+)\]\s+JIG\s+#(?P<jig>\d+)\s+~>\s+"
+        r"(?:Shelf|Półka)\s+(?P<from_shelf>\d+),\s+(?:Row|Rząd)\s+(?P<from_row>\d+),\s+"
+        r"(?:Column|Kolumna)\s+(?P<from_col>\d+),\s+(?:Position|Pozycja)\s+(?P<from_position>\d+)\s+"
+        r"->\s+(?:Shelf|Półka)\s+(?P<to_shelf>\d+),\s+(?:Row|Rząd)\s+(?P<to_row>\d+),\s+"
+        r"(?:Column|Kolumna)\s+(?P<to_col>\d+),\s+(?:Position|Pozycja)\s+(?P<to_position>\d+)"
+    )
     pattern = (
         r"^\[(?P<timestamp>[^\]]+)\]\s+JIG\s+#(?P<jig>\d+)\s+"
-        r"(?P<action>->|<-)\s+Półka\s+(?P<shelf>\d+),\s+Rząd\s+(?P<row>\d+),\s+"
-        r"Kolumna\s+(?P<col>\d+),\s+Pozycja\s+(?P<position>\d+)"
+        r"(?P<action>->|<-)\s+(?:Shelf|Półka)\s+(?P<shelf>\d+),\s+(?:Row|Rząd)\s+(?P<row>\d+),\s+"
+        r"(?:Column|Kolumna)\s+(?P<col>\d+),\s+(?:Position|Pozycja)\s+(?P<position>\d+)"
     )
-    match = re.match(pattern, line.strip())
+    line = line.strip()
+    match = re.match(move_pattern, line)
+    if match:
+        try:
+            timestamp = datetime.strptime(match.group("timestamp"), HISTORY_TIMESTAMP_FORMAT)
+        except ValueError:
+            return None
+        return {
+            "timestamp": timestamp,
+            "jig": int(match.group("jig")),
+            "from_position": tuple(
+                int(match.group(name)) - 1
+                for name in ("from_shelf", "from_row", "from_col", "from_position")
+            ),
+            "position": tuple(
+                int(match.group(name)) - 1
+                for name in ("to_shelf", "to_row", "to_col", "to_position")
+            ),
+            "action": "move",
+        }
+
+    match = re.match(pattern, line)
     if not match:
         return None
     try:
@@ -78,11 +107,24 @@ class WardrobeManager:
         self.normal_text = self.config.get('COLORS', 'normal_text')
         self.orange_text = self.config.get('COLORS', 'orange_text')
         self.red_text = self.config.get('COLORS', 'red_text')
+        self.empty_bg = self.config.get('COLORS', 'empty_bg')
+        self.empty_text = self.config.get('COLORS', 'empty_text')
+        self.blink_red_bg = self.config.get('COLORS', 'blink_red_bg')
+        self.blink_orange_bg = self.config.get('COLORS', 'blink_orange_bg')
+        self.blink_text = self.config.get('COLORS', 'blink_text')
         
         # Wygląd
         self.jig_width = self.config.getint('APPEARANCE', 'square_width')
         self.jig_height = self.config.getint('APPEARANCE', 'square_height')
         self.jig_font_size = self.config.getint('APPEARANCE', 'square_font_size')
+        self.wardrobe_name = self.config.get('WARDROBE_TITLE', 'text')
+        self.wardrobe_name_color = self.config.get('WARDROBE_TITLE', 'color')
+        self.wardrobe_name_font_size = self.config.getint('WARDROBE_TITLE', 'font_size')
+        self.near_expiry_seconds = self.config.getint('ALERTS', 'near_expiry_seconds')
+        self.blink_interval_ms = self.config.getint('ALERTS', 'blink_interval_ms')
+        self.empty_sound_file = self.config.get('SOUNDS', 'empty_sound_file')
+        self.occupied_sound_file = self.config.get('SOUNDS', 'occupied_sound_file')
+        self.expired_sound_file = self.config.get('SOUNDS', 'expired_sound_file')
         
         # Pliki
         self.history_file = self.config.get('FILES', 'history_file')
@@ -97,6 +139,8 @@ class WardrobeManager:
         self.jig_insertion_times = {}  # {pos_key: insertion_timestamp}
         self.timer_threads = {}  # {pos_key: thread}
         self.expired_jigs = set()
+        self.warning_sound_played = set()
+        self.blink_expired = False
         self.current_jig = None
         
         # Wczytanie stanu szafy
@@ -106,6 +150,7 @@ class WardrobeManager:
         # GUI
         self.setup_ui()
         self.start_all_timers()
+        self.schedule_expired_blink()
         
     def setup_ui(self):
         """Tworzenie interfejsu użytkownika"""
@@ -118,12 +163,12 @@ class WardrobeManager:
         top_frame.pack(fill=tk.X, pady=10)
         
         # Input dla numeru JIG
-        tk.Label(top_frame, text="Numer JIG:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
+        tk.Label(top_frame, text="JIG number:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
         self.jig_entry = tk.Entry(top_frame, width=10, font=('Arial', 12))
         self.jig_entry.pack(side=tk.LEFT, padx=5)
-        self.jig_entry.bind('<Return>', lambda e: self.input_jig())
+        self.jig_entry.bind('<Return>', self.focus_operator_entry)
 
-        tk.Label(top_frame, text="Numer operatora:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
+        tk.Label(top_frame, text="Operator number:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
         validate_operator_number = self.root.register(self.validate_operator_number_length)
         self.operator_entry = tk.Entry(
             top_frame,
@@ -135,23 +180,35 @@ class WardrobeManager:
         self.operator_entry.pack(side=tk.LEFT, padx=5)
         self.operator_entry.bind('<Return>', lambda e: self.input_jig())
 
-        tk.Button(top_frame, text="Potwierdź", command=self.input_jig, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
-        tk.Button(top_frame, text="Wyczyść wszystko", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+        tk.Button(top_frame, text="Confirm", command=self.input_jig, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+        tk.Button(top_frame, text="Clear all", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
         
         # Status
-        self.status_label = tk.Label(top_frame, text="Czekam na numer JIG...", 
+        self.status_label = tk.Label(top_frame, text="Waiting for JIG number...", 
                                      bg='lightyellow', font=('Arial', 10), relief=tk.SUNKEN, bd=1)
         self.status_label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
         
         # Środkowa część - Półki bez scrollbara
         shelves_frame = tk.Frame(main_frame, bg='white')
         shelves_frame.pack(fill=tk.BOTH, expand=True)
-        
+
+        tk.Label(
+            shelves_frame,
+            text=self.wardrobe_name,
+            bg='white',
+            fg=self.wardrobe_name_color,
+            font=('Arial', self.wardrobe_name_font_size, 'bold')
+        ).pack(pady=(0, 10))
+
         self.shelf_buttons = {}
         
         for shelf_idx in range(self.num_shelves):
-            shelf_label = tk.Label(shelves_frame, text=f"Półka {shelf_idx + 1}", 
-                                   bg='white', font=('Arial', 10, 'bold'))
+            shelf_label = tk.Label(
+                shelves_frame,
+                text=f"Shelf {shelf_idx + 1}",
+                bg='white',
+                font=('Arial', 10, 'bold')
+            )
             shelf_label.pack(pady=5)
             
             shelf_frame = tk.Frame(shelves_frame, bg='lightgray', relief=tk.RAISED, bd=2)
@@ -193,13 +250,18 @@ class WardrobeManager:
         """Prevent entering more than the required number of operator characters."""
         return len(value) <= OPERATOR_NUMBER_LENGTH
 
+    def focus_operator_entry(self, event=None):
+        """Move to the operator-number field after confirming a JIG number."""
+        self.operator_entry.focus_set()
+        return "break"
+
     def input_jig(self):
         """Wczytanie numeru JIG"""
         operator_number = self.operator_entry.get()
         if not is_valid_operator_number(operator_number):
             messagebox.showerror(
-                "Błąd",
-                f"Numer operatora musi zawierać dokładnie {OPERATOR_NUMBER_LENGTH} znaki."
+                "Error",
+                f"Operator number must contain exactly {OPERATOR_NUMBER_LENGTH} characters."
             )
             self.operator_entry.focus_set()
             return
@@ -207,24 +269,61 @@ class WardrobeManager:
         try:
             jig_num = int(self.jig_entry.get())
             if jig_num < 0:
-                messagebox.showerror("Błąd", "Numer JIG musi być dodatni")
+                messagebox.showerror("Error", "JIG number must be positive")
                 return
             
             self.current_jig = jig_num
             self.jig_entry.delete(0, tk.END)
             self.operator_entry.delete(0, tk.END)
-            self.status_label.config(text=f"Wybrałeś JIG #{jig_num}. Teraz kliknij na pozycję na półce.", 
+            imminent_positions = self.get_imminent_expiry_positions()
+            if imminent_positions:
+                positions = ", ".join(imminent_positions)
+                messagebox.showwarning(
+                    "Time almost expired",
+                    "JIG at "
+                    f"{positions} will need to be removed soon. Wait to remove it and "
+                    "insert the new JIG at the same time to avoid losing temperature."
+                )
+            self.status_label.config(text=f"JIG #{jig_num} selected. Click a shelf position.", 
                                     bg='lightyellow')
         except ValueError:
-            messagebox.showerror("Błąd", "Wprowadź prawidłowy numer JIG")
+            messagebox.showerror("Error", "Enter a valid JIG number")
     
     def select_position(self, shelf, row, col, jig):
         """Wybór pozycji na półce"""
-        if self.current_jig is None:
-            messagebox.showwarning("Ostrzeżenie", "Najpierw wprowadź numer JIG")
-            return
-        
         pos_key = (shelf, row, col, jig)
+
+        # Expired JIGs can be removed without entering a new JIG number.
+        if pos_key in self.wardrobe_state and pos_key in self.expired_jigs:
+            self.save_to_history(
+                self.wardrobe_state[pos_key], shelf, row, col, jig, action="remove"
+            )
+            del self.wardrobe_state[pos_key]
+            self.jig_timers.pop(pos_key, None)
+            self.jig_insertion_times.pop(pos_key, None)
+            self.timer_threads.pop(pos_key, None)
+            self.expired_jigs.discard(pos_key)
+            self.play_sound(self.empty_sound_file)
+            self.save_state()
+            self.update_display()
+            self.status_label.config(
+                text="Expired JIG removed from the position.",
+                bg='lightgreen'
+            )
+            return
+
+        if self.current_jig is None:
+            messagebox.showwarning("Warning", "Enter a JIG number first")
+            return
+
+        if col == 0 and self.has_jig_in_next_column(shelf, row, jig):
+            if messagebox.askyesno(
+                "JIG move",
+                "Was the JIG from column 2 moved to column 1, with the new JIG "
+                "inserted in column 2?"
+            ):
+                self.move_jig_to_previous_column(shelf, row, jig)
+                pos_key = (shelf, row, 1, jig)
         
         # Jeśli pozycja jest już zajęta, usuń poprzedni JIG
         if pos_key in self.wardrobe_state:
@@ -240,6 +339,8 @@ class WardrobeManager:
             if pos_key in self.timer_threads:
                 del self.timer_threads[pos_key]
             self.expired_jigs.discard(pos_key)
+            self.play_sound(self.empty_sound_file)
+            self.warning_sound_played.discard(pos_key)
         else:
             # Dodaj nowy JIG
             self.wardrobe_state[pos_key] = self.current_jig
@@ -259,7 +360,43 @@ class WardrobeManager:
         self.save_state()
         self.update_display()
         self.current_jig = None
-        self.status_label.config(text="Pozycja zaktualizowana. Wpisz następny JIG.", bg='lightgreen')
+        self.status_label.config(text="Position updated. Enter the next JIG.", bg='lightgreen')
+
+    def get_imminent_expiry_positions(self):
+        """Return descriptions of occupied positions that are near expiry."""
+        positions = []
+        for pos_key, remaining_seconds in self.jig_timers.items():
+            if 0 < remaining_seconds <= self.near_expiry_seconds:
+                positions.append(
+                    f"Shelf {pos_key[0] + 1}, Row {pos_key[1] + 1}, "
+                    f"Column {pos_key[2] + 1}, Position {pos_key[3] + 1}"
+                )
+        return positions
+
+    def has_jig_in_next_column(self, shelf, row, jig):
+        """Return whether the matching position in column 2 is occupied."""
+        return (shelf, row, 1, jig) in self.wardrobe_state
+
+    def move_jig_to_previous_column(self, shelf, row, jig):
+        """Move a JIG from column 2 to column 1 without resetting its timer."""
+        source = (shelf, row, 1, jig)
+        destination = (shelf, row, 0, jig)
+        jig_num = self.wardrobe_state.pop(source)
+        self.wardrobe_state[destination] = jig_num
+        for collection in (
+            self.jig_timers,
+            self.jig_insertion_times,
+            self.timer_threads,
+        ):
+            if source in collection:
+                collection[destination] = collection.pop(source)
+        if source in self.expired_jigs:
+            self.expired_jigs.remove(source)
+            self.expired_jigs.add(destination)
+        if source in self.warning_sound_played:
+            self.warning_sound_played.remove(source)
+            self.warning_sound_played.add(destination)
+        self.save_move_to_history(jig_num, source, destination)
     
     def start_jig_timer(self, pos_key):
         """Uruchomienie timera dla konkretnego JIG"""
@@ -279,12 +416,18 @@ class WardrobeManager:
             else:
                 self.jig_timers[pos_key] -= 1
             self.update_display()
+            if (
+                0 < self.jig_timers[pos_key] <= self.near_expiry_seconds
+                and pos_key not in self.warning_sound_played
+            ):
+                self.warning_sound_played.add(pos_key)
+                self.play_sound(self.occupied_sound_file)
             time.sleep(1)
         
         # Czasami usun timer
         if pos_key in self.jig_timers and self.jig_timers[pos_key] <= 0:
-            messagebox.showinfo("Timer", f"Czas się skończył dla JIG na pozycji {pos_key}!")
             self.expired_jigs.add(pos_key)
+            self.play_sound(self.expired_sound_file)
             self.save_state()
             self.update_display()
     
@@ -306,6 +449,17 @@ class WardrobeManager:
                 self.start_jig_timer(pos_key)
 
         self.update_display()
+
+    def schedule_expired_blink(self):
+        """Toggle the display color of expired JIGs at the configured interval."""
+        self.blink_expired = not self.blink_expired
+        self.update_display()
+        self.root.after(self.blink_interval_ms, self.schedule_expired_blink)
+
+    def play_sound(self, sound_file):
+        """Play a configured WAV file when its path is provided."""
+        if sound_file and os.path.isfile(sound_file):
+            winsound.PlaySound(sound_file, winsound.SND_FILENAME | winsound.SND_ASYNC)
     
     def get_color_for_time(self, remaining_seconds):
         """Zwraca kolory na podstawie pozostałego czasu"""
@@ -332,10 +486,13 @@ class WardrobeManager:
                 remaining_time = self.jig_timers.get(pos_key, self.initial_time * 60)
                 time_str = self.format_time(remaining_time)
                 if pos_key in self.expired_jigs:
-                    time_str += "\nNIE WYJĘTY"
-                
-                # Kolorowanie na podstawie czasu
-                bg_color, text_color = self.get_color_for_time(remaining_time)
+                    time_str += "\nNOT REMOVED"
+                    bg_color = (
+                        self.blink_red_bg if self.blink_expired else self.blink_orange_bg
+                    )
+                    text_color = self.blink_text
+                else:
+                    bg_color, text_color = self.get_color_for_time(remaining_time)
                 
                 btn.config(
                     text=f"#{jig_num}\n{time_str}", 
@@ -343,7 +500,7 @@ class WardrobeManager:
                     fg=text_color
                 )
             else:
-                btn.config(text="", bg='white', fg='black')
+                btn.config(text="", bg=self.empty_bg, fg=self.empty_text)
     
     def clear_all(self):
         """Czyszczenie wszystkiego"""
@@ -351,14 +508,17 @@ class WardrobeManager:
             self.save_to_history(
                 jig_num, pos_key[0], pos_key[1], pos_key[2], pos_key[3], action="remove"
             )
+            self.play_sound(self.empty_sound_file)
         self.jig_timers.clear()
         self.jig_insertion_times.clear()
         self.timer_threads.clear()
         self.current_jig = None
         self.wardrobe_state.clear()
+        self.expired_jigs.clear()
+        self.warning_sound_played.clear()
         self.save_state()
         self.update_display()
-        self.status_label.config(text="Czyszczenie zakończone. Gotów na nowy numer.", bg='lightyellow')
+        self.status_label.config(text="Clearing complete. Ready for a new number.", bg='lightyellow')
         self.jig_entry.delete(0, tk.END)
         self.operator_entry.delete(0, tk.END)
     
@@ -369,12 +529,28 @@ class WardrobeManager:
         marker = "->" if action == "insert" else "<-"
         
         history_entry = (
-            f"[{timestamp}] JIG #{jig_num} {marker} Półka {shelf + 1}, "
-            f"Rząd {row + 1}, Kolumna {col + 1}, Pozycja {jig_idx + 1}\n"
+            f"[{timestamp}] JIG #{jig_num} {marker} Shelf {shelf + 1}, "
+            f"Row {row + 1}, Column {col + 1}, Position {jig_idx + 1}\n"
         )
         
         with open(self.history_file, 'a', encoding='utf-8') as f:
             f.write(history_entry)
+
+    def save_move_to_history(self, jig_num, source, destination):
+        """Record a position change without treating the JIG as newly inserted."""
+        timestamp = datetime.now().strftime(HISTORY_TIMESTAMP_FORMAT)
+        source_text = (
+            f"Shelf {source[0] + 1}, Row {source[1] + 1}, "
+            f"Column {source[2] + 1}, Position {source[3] + 1}"
+        )
+        destination_text = (
+            f"Shelf {destination[0] + 1}, Row {destination[1] + 1}, "
+            f"Column {destination[2] + 1}, Position {destination[3] + 1}"
+        )
+        with open(self.history_file, 'a', encoding='utf-8') as history:
+            history.write(
+                f"[{timestamp}] JIG #{jig_num} ~> {source_text} -> {destination_text}\n"
+            )
     
     def save_state(self):
         """Zapis stanu szafy do JSON"""
@@ -445,21 +621,20 @@ class WardrobeManager:
         except OSError:
             return
 
-        latest_events = {}
         for event in events:
-            if event is not None and (
-                event["position"] not in latest_events
-                or event["timestamp"] >= latest_events[event["position"]]["timestamp"]
-            ):
-                latest_events[event["position"]] = event
-
-        for pos_key, event in latest_events.items():
+            if event is None:
+                continue
+            pos_key = event["position"]
             if event["action"] == "remove":
-                if pos_key in self.wardrobe_state:
-                    del self.wardrobe_state[pos_key]
+                self.wardrobe_state.pop(pos_key, None)
                 self.jig_timers.pop(pos_key, None)
                 self.jig_insertion_times.pop(pos_key, None)
                 self.expired_jigs.discard(pos_key)
+            elif event["action"] == "move":
+                source = event["from_position"]
+                if source in self.wardrobe_state:
+                    self.wardrobe_state[pos_key] = self.wardrobe_state.pop(source)
+                    self.jig_insertion_times[pos_key] = self.jig_insertion_times.pop(source)
             else:
                 self.wardrobe_state[pos_key] = event["jig"]
                 self.jig_insertion_times[pos_key] = event["timestamp"]
