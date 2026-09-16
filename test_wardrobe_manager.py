@@ -61,13 +61,26 @@ class TimerCalculationTests(unittest.TestCase):
             self.assertEqual(config["WARDROBE_TITLE"]["text"], "LINE-01")
             self.assertEqual(config["FILES"]["state_file"], "custom-state.json")
 
+    def test_load_config_reports_legacy_ini_migration(self):
+        with TemporaryDirectory() as temp_dir:
+            current_dir = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                with open("config.ini", "w", encoding="utf-8") as config_file:
+                    config_file.write("[WARDROBE]\nnum_shelves = 3\n")
+
+                with self.assertRaises(FileNotFoundError) as error:
+                    load_config()
+            finally:
+                os.chdir(current_dir)
+
+        self.assertIn("config.toml", str(error.exception))
+        self.assertIn("config.ini", str(error.exception))
+
     def test_manager_initialization_uses_toml_config(self):
         class RootStub:
             def title(self, value):
                 self.title_value = value
-
-            def state(self, value):
-                self.state_value = value
 
             def resizable(self, width, height):
                 self.resizable_value = (width, height)

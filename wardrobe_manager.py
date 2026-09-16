@@ -17,6 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ uses tomllib
 HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
 OPERATOR_NUMBER_LENGTH = 4
 CONFIG_FILE = "config.toml"
+LEGACY_CONFIG_FILE = "config.ini"
 
 
 def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
@@ -87,6 +88,14 @@ def parse_history_line(line):
 
 def load_config(config_path=CONFIG_FILE):
     """Load application configuration from a TOML file."""
+    if not os.path.exists(config_path):
+        if config_path == CONFIG_FILE and os.path.exists(LEGACY_CONFIG_FILE):
+            raise FileNotFoundError(
+                "Missing config.toml. Found legacy config.ini; rename it to config.toml "
+                "and rewrite string values in TOML syntax."
+            )
+        raise FileNotFoundError(f"Missing configuration file: {config_path}")
+
     with open(config_path, "rb") as config_file:
         return tomllib.load(config_file)
 
@@ -100,7 +109,12 @@ class WardrobeManager:
         self.apply_config(load_config())
         
         # Maksymalizuj okno
-        self.root.state('zoomed')  # Windows
+        state_method = getattr(self.root, "state", None)
+        if callable(state_method):
+            try:
+                state_method('zoomed')  # Windows
+            except Exception:
+                pass
         self.root.resizable(True, True)
         
         # Stan timera - osobny timer dla każdego JIG
