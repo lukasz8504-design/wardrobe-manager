@@ -200,7 +200,7 @@ class TimerCalculationTests(unittest.TestCase):
 
         self.assertEqual(str(error.exception), "Missing configuration file: config.toml")
 
-    def test_load_default_config_reports_legacy_ini_for_explicit_config_toml_path(self):
+    def test_load_default_config_reports_missing_explicit_config_path(self):
         with TemporaryDirectory() as temp_dir:
             with open(os.path.join(temp_dir, "config.ini"), "w", encoding="utf-8") as config_file:
                 config_file.write("[WARDROBE]\nnum_shelves = 3\n")
@@ -208,8 +208,10 @@ class TimerCalculationTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError) as error:
                 load_default_config(os.path.join(temp_dir, "config.toml"))
 
-        self.assertIn("config.toml", str(error.exception))
-        self.assertIn("config.ini", str(error.exception))
+        self.assertEqual(
+            str(error.exception),
+            f"Missing configuration file: {os.path.basename(os.path.join(temp_dir, 'config.toml'))}",
+        )
 
     def test_manager_initialization_uses_toml_config(self):
         class RootStub:
