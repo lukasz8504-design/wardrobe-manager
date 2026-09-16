@@ -89,8 +89,14 @@ def parse_history_line(line):
 
 def load_config(config_path=CONFIG_FILE):
     """Load application configuration from a TOML file."""
+    normalized_config_path = os.path.abspath(config_path)
+    normalized_default_path = os.path.abspath(CONFIG_FILE)
+
     if not os.path.exists(config_path):
-        if config_path == CONFIG_FILE and os.path.exists(LEGACY_CONFIG_FILE):
+        if (
+            normalized_config_path == normalized_default_path
+            and os.path.exists(LEGACY_CONFIG_FILE)
+        ):
             raise FileNotFoundError(
                 "Missing config.toml. Found legacy config.ini; rename it to config.toml "
                 "and rewrite string values in TOML syntax."
