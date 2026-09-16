@@ -296,6 +296,7 @@ class TimerCalculationTests(unittest.TestCase):
 
     def test_apply_config_maps_toml_sections_to_attributes(self):
         manager = WardrobeManager.__new__(WardrobeManager)
+        config_dir = "/tmp/custom-config-dir"
 
         manager.apply_config(
             {
@@ -346,7 +347,8 @@ class TimerCalculationTests(unittest.TestCase):
                     "history_file": "history.log",
                     "state_file": "state.json",
                 },
-            }
+            },
+            config_dir=config_dir,
         )
 
         self.assertEqual(manager.num_shelves, 6)
@@ -360,7 +362,8 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(manager.wardrobe_name, "ASSEMBLY")
         self.assertEqual(manager.blink_interval_ms, 900)
         self.assertEqual(manager.occupied_sound_file, "occupied.wav")
-        self.assertEqual(manager.state_file, os.path.join(APP_DIR, "state.json"))
+        self.assertEqual(manager.history_file, os.path.join(config_dir, "history.log"))
+        self.assertEqual(manager.state_file, os.path.join(config_dir, "state.json"))
 
     def test_operator_number_must_have_exactly_four_characters(self):
         self.assertFalse(is_valid_operator_number("123"))
