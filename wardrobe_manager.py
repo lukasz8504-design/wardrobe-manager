@@ -22,13 +22,6 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TK_TCL_ERROR = getattr(tk, "TclError", None)
 
 
-def resolve_app_path(path_value):
-    """Resolve a path relative to the application directory when needed."""
-    if os.path.isabs(path_value):
-        return path_value
-    return os.path.join(APP_DIR, path_value)
-
-
 def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
     """Return the remaining timer seconds based on the insertion timestamp."""
     current_time = current_time or datetime.now()
@@ -99,7 +92,7 @@ def load_config(config_path=None):
     """Load application configuration from a TOML file."""
     config_path = (
         os.path.join(APP_DIR, CONFIG_FILE)
-        if config_path is None else resolve_app_path(config_path)
+        if config_path is None else config_path
     )
     with open(config_path, "rb") as config_file:
         return tomllib.load(config_file)
@@ -110,7 +103,7 @@ def load_default_config(config_path=None):
     using_default_path = config_path is None
     config_path = (
         os.path.join(APP_DIR, CONFIG_FILE)
-        if using_default_path else resolve_app_path(config_path)
+        if using_default_path else config_path
     )
     legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
 
