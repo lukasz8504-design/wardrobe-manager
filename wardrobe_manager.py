@@ -96,11 +96,12 @@ def load_config(config_path=None):
 
 def load_default_config(config_path=None):
     """Load the default application configuration and report legacy INI migration issues."""
+    using_default_path = config_path is None
     config_path = os.path.abspath(config_path or CONFIG_FILE)
     legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
 
     if not os.path.exists(config_path):
-        if os.path.exists(legacy_config_path):
+        if using_default_path and os.path.exists(legacy_config_path):
             raise FileNotFoundError(
                 "Missing config.toml. Found legacy config.ini; rewrite it into valid TOML "
                 "syntax and save it as config.toml."

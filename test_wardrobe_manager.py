@@ -35,26 +35,135 @@ from wardrobe_manager import (
 )
 
 
+def build_config_toml(
+    *,
+    num_shelves=3,
+    num_rows=1,
+    num_columns=3,
+    squares_per_section=2,
+    initial_time=100,
+    orange_threshold=5,
+    red_threshold=1,
+    normal_bg="#101010",
+    orange_bg="#202020",
+    red_bg="#303030",
+    normal_text="#404040",
+    orange_text="#505050",
+    red_text="#606060",
+    empty_bg="#707070",
+    empty_text="#808080",
+    blink_red_bg="#909090",
+    blink_orange_bg="#A0A0A0",
+    blink_text="#B0B0B0",
+    square_width=11,
+    square_height=5,
+    square_font_size=15,
+    title_text="QA-LINE",
+    title_color="#abcdef",
+    title_font_size=18,
+    near_expiry_seconds=30,
+    blink_interval_ms=250,
+    empty_sound_file="",
+    occupied_sound_file="",
+    expired_sound_file="",
+    history_file="history-custom.txt",
+    state_file="state-custom.json",
+):
+    return f"""[WARDROBE]
+num_shelves = {num_shelves}
+num_rows = {num_rows}
+num_columns = {num_columns}
+squares_per_section = {squares_per_section}
+
+[TIMER]
+initial_time = {initial_time}
+orange_threshold = {orange_threshold}
+red_threshold = {red_threshold}
+
+[COLORS]
+normal_bg = "{normal_bg}"
+orange_bg = "{orange_bg}"
+red_bg = "{red_bg}"
+normal_text = "{normal_text}"
+orange_text = "{orange_text}"
+red_text = "{red_text}"
+empty_bg = "{empty_bg}"
+empty_text = "{empty_text}"
+blink_red_bg = "{blink_red_bg}"
+blink_orange_bg = "{blink_orange_bg}"
+blink_text = "{blink_text}"
+
+[APPEARANCE]
+square_width = {square_width}
+square_height = {square_height}
+square_font_size = {square_font_size}
+
+[WARDROBE_TITLE]
+text = "{title_text}"
+color = "{title_color}"
+font_size = {title_font_size}
+
+[ALERTS]
+near_expiry_seconds = {near_expiry_seconds}
+blink_interval_ms = {blink_interval_ms}
+
+[SOUNDS]
+empty_sound_file = "{empty_sound_file}"
+occupied_sound_file = "{occupied_sound_file}"
+expired_sound_file = "{expired_sound_file}"
+
+[FILES]
+history_file = "{history_file}"
+state_file = "{state_file}"
+"""
+
+
+def write_config_file(directory, content):
+    config_path = os.path.join(directory, "config.toml")
+    with open(config_path, "w", encoding="utf-8") as config_file:
+        config_file.write(content)
+    return config_path
+
+
 class TimerCalculationTests(unittest.TestCase):
     def test_load_config_reads_toml_values(self):
         with TemporaryDirectory() as temp_dir:
-            config_path = os.path.join(temp_dir, "config.toml")
-            with open(config_path, "w", encoding="utf-8") as config_file:
-                config_file.write(
-                    '[WARDROBE]\nnum_shelves = 4\nnum_rows = 2\nnum_columns = 5\n'
-                    'squares_per_section = 3\n\n'
-                    '[TIMER]\ninitial_time = 120\norange_threshold = 8\nred_threshold = 2\n\n'
-                    '[COLORS]\nnormal_bg = "#111111"\norange_bg = "#222222"\nred_bg = "#333333"\n'
-                    'normal_text = "#444444"\norange_text = "#555555"\nred_text = "#666666"\n'
-                    'empty_bg = "#777777"\nempty_text = "#888888"\nblink_red_bg = "#999999"\n'
-                    'blink_orange_bg = "#AAAAAA"\nblink_text = "#BBBBBB"\n\n'
-                    '[APPEARANCE]\nsquare_width = 9\nsquare_height = 4\nsquare_font_size = 12\n\n'
-                    '[WARDROBE_TITLE]\ntext = "LINE-01"\ncolor = "#123456"\nfont_size = 14\n\n'
-                    '[ALERTS]\nnear_expiry_seconds = 45\nblink_interval_ms = 700\n\n'
-                    '[SOUNDS]\nempty_sound_file = ""\noccupied_sound_file = "occupied.wav"\n'
-                    'expired_sound_file = "expired.wav"\n\n'
-                    '[FILES]\nhistory_file = "custom-history.txt"\nstate_file = "custom-state.json"\n'
-                )
+            config_path = write_config_file(
+                temp_dir,
+                build_config_toml(
+                    num_shelves=4,
+                    num_rows=2,
+                    num_columns=5,
+                    squares_per_section=3,
+                    initial_time=120,
+                    orange_threshold=8,
+                    red_threshold=2,
+                    normal_bg="#111111",
+                    orange_bg="#222222",
+                    red_bg="#333333",
+                    normal_text="#444444",
+                    orange_text="#555555",
+                    red_text="#666666",
+                    empty_bg="#777777",
+                    empty_text="#888888",
+                    blink_red_bg="#999999",
+                    blink_orange_bg="#AAAAAA",
+                    blink_text="#BBBBBB",
+                    square_width=9,
+                    square_height=4,
+                    square_font_size=12,
+                    title_text="LINE-01",
+                    title_color="#123456",
+                    title_font_size=14,
+                    near_expiry_seconds=45,
+                    blink_interval_ms=700,
+                    empty_sound_file="",
+                    occupied_sound_file="occupied.wav",
+                    expired_sound_file="expired.wav",
+                    history_file="custom-history.txt",
+                    state_file="custom-state.json",
+                ),
+            )
 
             config = load_config(config_path)
 
@@ -100,23 +209,16 @@ class TimerCalculationTests(unittest.TestCase):
                 self.resizable_value = (width, height)
 
         with TemporaryDirectory() as temp_dir:
-            config_path = os.path.join(temp_dir, "config.toml")
-            with open(config_path, "w", encoding="utf-8") as config_file:
-                config_file.write(
-                    '[WARDROBE]\nnum_shelves = 2\nnum_rows = 1\nnum_columns = 3\n'
-                    'squares_per_section = 2\n\n'
-                    '[TIMER]\ninitial_time = 90\norange_threshold = 6\nred_threshold = 1\n\n'
-                    '[COLORS]\nnormal_bg = "#101010"\norange_bg = "#202020"\nred_bg = "#303030"\n'
-                    'normal_text = "#404040"\norange_text = "#505050"\nred_text = "#606060"\n'
-                    'empty_bg = "#707070"\nempty_text = "#808080"\nblink_red_bg = "#909090"\n'
-                    'blink_orange_bg = "#A0A0A0"\nblink_text = "#B0B0B0"\n\n'
-                    '[APPEARANCE]\nsquare_width = 11\nsquare_height = 5\nsquare_font_size = 15\n\n'
-                    '[WARDROBE_TITLE]\ntext = "QA-LINE"\ncolor = "#abcdef"\nfont_size = 18\n\n'
-                    '[ALERTS]\nnear_expiry_seconds = 30\nblink_interval_ms = 250\n\n'
-                    '[SOUNDS]\nempty_sound_file = "empty.wav"\noccupied_sound_file = ""\n'
-                    'expired_sound_file = "expired.wav"\n\n'
-                    '[FILES]\nhistory_file = "history-custom.txt"\nstate_file = "state-custom.json"\n'
-                )
+            config_path = write_config_file(
+                temp_dir,
+                build_config_toml(
+                    num_shelves=2,
+                    initial_time=90,
+                    orange_threshold=6,
+                    empty_sound_file="empty.wav",
+                    expired_sound_file="expired.wav",
+                ),
+            )
 
             current_dir = os.getcwd()
             os.chdir(temp_dir)
@@ -153,22 +255,15 @@ class TimerCalculationTests(unittest.TestCase):
                 self.resizable_value = (width, height)
 
         with TemporaryDirectory() as temp_dir:
-            with open(os.path.join(temp_dir, "config.toml"), "w", encoding="utf-8") as config_file:
-                config_file.write(
-                    '[WARDROBE]\nnum_shelves = 1\nnum_rows = 1\nnum_columns = 1\n'
-                    'squares_per_section = 1\n\n'
-                    '[TIMER]\ninitial_time = 10\norange_threshold = 5\nred_threshold = 1\n\n'
-                    '[COLORS]\nnormal_bg = "#101010"\norange_bg = "#202020"\nred_bg = "#303030"\n'
-                    'normal_text = "#404040"\norange_text = "#505050"\nred_text = "#606060"\n'
-                    'empty_bg = "#707070"\nempty_text = "#808080"\nblink_red_bg = "#909090"\n'
-                    'blink_orange_bg = "#A0A0A0"\nblink_text = "#B0B0B0"\n\n'
-                    '[APPEARANCE]\nsquare_width = 11\nsquare_height = 5\nsquare_font_size = 15\n\n'
-                    '[WARDROBE_TITLE]\ntext = "QA-LINE"\ncolor = "#abcdef"\nfont_size = 18\n\n'
-                    '[ALERTS]\nnear_expiry_seconds = 30\nblink_interval_ms = 250\n\n'
-                    '[SOUNDS]\nempty_sound_file = ""\noccupied_sound_file = ""\n'
-                    'expired_sound_file = ""\n\n'
-                    '[FILES]\nhistory_file = "history-custom.txt"\nstate_file = "state-custom.json"\n'
-                )
+            write_config_file(
+                temp_dir,
+                build_config_toml(
+                    num_shelves=1,
+                    num_columns=1,
+                    squares_per_section=1,
+                    initial_time=10,
+                ),
+            )
 
             current_dir = os.getcwd()
             os.chdir(temp_dir)
