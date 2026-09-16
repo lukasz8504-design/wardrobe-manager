@@ -79,6 +79,18 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertIn("config.toml", str(error.exception))
         self.assertIn("config.ini", str(error.exception))
 
+    def test_load_default_config_reports_missing_default_file(self):
+        with TemporaryDirectory() as temp_dir:
+            current_dir = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                with self.assertRaises(FileNotFoundError) as error:
+                    load_default_config()
+            finally:
+                os.chdir(current_dir)
+
+        self.assertEqual(str(error.exception), "Missing configuration file: config.toml")
+
     def test_manager_initialization_uses_toml_config(self):
         class RootStub:
             def title(self, value):
