@@ -112,7 +112,7 @@ def load_default_config():
 class WardrobeManager:
     def __init__(self, root):
         self.root = root
-        self.root.title("Wardrobe Manager - Szafa")
+        self.root.title("Ocen Manager - Szafa")
         
         # Wczytanie konfiguracji
         self.apply_config(load_default_config())

@@ -1,4 +1,4 @@
-# Wardrobe Manager - Python Dependencies
+# Ocen Manager - Python Dependencies
 # Tkinter is built-in with Python, no additional packages required
 # This file is provided for future extensions
  

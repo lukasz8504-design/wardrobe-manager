@@ -1,4 +1,4 @@
-# Wardrobe Manager - Aplikacja do zarządzania szafą
+# Ocen Manager - Aplikacja do zarządzania szafą
 
 Aplikacja do zarządzania szafą z systemem timerów dla każdego JIG i historią wprowadzanych danych.
 

@@ -127,6 +127,7 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(manager.near_expiry_seconds, 30)
         self.assertEqual(manager.empty_sound_file, "empty.wav")
         self.assertEqual(manager.history_file, "history-custom.txt")
+        self.assertEqual(manager.root.title_value, "Ocen Manager - Szafa")
 
     def test_manager_initialization_ignores_unsupported_zoom_state(self):
         class RootStub:
@@ -173,6 +174,7 @@ class TimerCalculationTests(unittest.TestCase):
 
         self.assertEqual(manager.initial_time, 10)
         self.assertEqual(manager.state_file, "state-custom.json")
+        self.assertEqual(manager.root.title_value, "Ocen Manager - Szafa")
 
     def test_apply_config_maps_toml_sections_to_attributes(self):
         manager = WardrobeManager.__new__(WardrobeManager)
