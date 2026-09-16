@@ -122,7 +122,7 @@ Powyższy przykład pokazuje tylko fragment konfiguracji. Aplikacja wymaga wszys
 
 ## Migracja z INI do TOML
 
-Jeśli używasz starego `config.ini`, nie wystarczy samo przemianowanie pliku na `config.toml` — najpierw trzeba przepisać wartości do poprawnej składni TOML, a dopiero potem zapisać plik jako `config.toml`:
+Jeśli używasz starego `config.ini`, użyj dołączonego `config.toml` jako wzorca. Nie wystarczy samo przemianowanie pliku — najpierw trzeba przepisać stare wartości do poprawnej składni TOML w strukturze nowego `config.toml`:
 
 - sekcje `[SEKCJA]` pozostają bez zmian,
 - liczby zapisuj bez cudzysłowów, np. `initial_time = 100`,

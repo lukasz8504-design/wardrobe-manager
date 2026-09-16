@@ -92,7 +92,7 @@ def load_config(config_path=None):
     """Load application configuration from a TOML file."""
     config_path = (
         os.path.join(APP_DIR, CONFIG_FILE)
-        if config_path is None else config_path
+        if config_path is None else os.path.abspath(config_path)
     )
     with open(config_path, "rb") as config_file:
         return tomllib.load(config_file)
