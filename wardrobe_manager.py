@@ -90,13 +90,14 @@ def parse_history_line(line):
 def load_config(config_path=CONFIG_FILE):
     """Load application configuration from a TOML file."""
     normalized_config_path = os.path.abspath(config_path)
+    normalized_default_path = os.path.abspath(CONFIG_FILE)
     legacy_config_path = os.path.join(
         os.path.dirname(normalized_config_path), LEGACY_CONFIG_FILE
     )
 
     if not os.path.exists(config_path):
         if (
-            os.path.basename(normalized_config_path) == CONFIG_FILE
+            normalized_config_path == normalized_default_path
             and os.path.exists(legacy_config_path)
         ):
             raise FileNotFoundError(

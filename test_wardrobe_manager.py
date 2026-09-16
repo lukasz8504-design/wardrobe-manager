@@ -94,22 +94,6 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertIn("config.toml", str(error.exception))
         self.assertIn("config.ini", str(error.exception))
 
-    def test_load_config_reports_legacy_ini_migration_for_absolute_default_path(self):
-        with TemporaryDirectory() as temp_dir, TemporaryDirectory() as other_dir:
-            current_dir = os.getcwd()
-            os.chdir(other_dir)
-            try:
-                with open(os.path.join(temp_dir, "config.ini"), "w", encoding="utf-8") as config_file:
-                    config_file.write("[WARDROBE]\nnum_shelves = 3\n")
-
-                with self.assertRaises(FileNotFoundError) as error:
-                    load_config(os.path.join(temp_dir, "config.toml"))
-            finally:
-                os.chdir(current_dir)
-
-        self.assertIn("config.toml", str(error.exception))
-        self.assertIn("config.ini", str(error.exception))
-
     def test_manager_initialization_uses_toml_config(self):
         class RootStub:
             def title(self, value):
