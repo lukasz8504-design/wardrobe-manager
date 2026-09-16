@@ -182,6 +182,19 @@ class TimerCalculationTests(unittest.TestCase):
             self.assertEqual(config["WARDROBE_TITLE"]["text"], "LINE-01")
             self.assertEqual(config["FILES"]["state_file"], "custom-state.json")
 
+    def test_load_config_resolves_relative_override_from_app_directory(self):
+        with TemporaryDirectory() as temp_dir:
+            os.makedirs(os.path.join(temp_dir, "custom"), exist_ok=True)
+            write_config_file(
+                os.path.join(temp_dir, "custom"),
+                build_config_toml(title_text="RELATIVE-OVERRIDE"),
+            )
+
+            with patch("wardrobe_manager.APP_DIR", temp_dir):
+                config = load_config("custom/config.toml")
+
+        self.assertEqual(config["WARDROBE_TITLE"]["text"], "RELATIVE-OVERRIDE")
+
     def test_load_default_config_reports_legacy_ini_migration(self):
         with TemporaryDirectory() as temp_dir:
             with patch("wardrobe_manager.APP_DIR", temp_dir):
