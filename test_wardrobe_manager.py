@@ -1,17 +1,118 @@
 import unittest
 from datetime import datetime, timedelta
 import os
+import sys
 from tempfile import NamedTemporaryFile
+from tempfile import TemporaryDirectory
+from types import ModuleType
+from unittest.mock import patch
+
+fake_messagebox = ModuleType("messagebox")
+fake_messagebox.showerror = lambda *args, **kwargs: None
+fake_messagebox.showwarning = lambda *args, **kwargs: None
+fake_messagebox.askyesno = lambda *args, **kwargs: False
+
+fake_tkinter = ModuleType("tkinter")
+fake_tkinter.messagebox = fake_messagebox
+fake_tkinter.END = "end"
+fake_tkinter.BOTH = "both"
+fake_tkinter.X = "x"
+fake_tkinter.LEFT = "left"
+fake_tkinter.SUNKEN = "sunken"
+fake_tkinter.RAISED = "raised"
+
+sys.modules.setdefault("tkinter", fake_tkinter)
+sys.modules.setdefault("winsound", ModuleType("winsound"))
 
 from wardrobe_manager import (
     WardrobeManager,
     calculate_remaining_time,
     is_valid_operator_number,
+    load_config,
     parse_history_line,
 )
 
 
 class TimerCalculationTests(unittest.TestCase):
+    def test_load_config_reads_toml_values(self):
+        with TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "config.toml")
+            with open(config_path, "w", encoding="utf-8") as config_file:
+                config_file.write(
+                    '[WARDROBE]\nnum_shelves = 4\nnum_rows = 2\nnum_columns = 5\n'
+                    'squares_per_section = 3\n\n'
+                    '[TIMER]\ninitial_time = 120\norange_threshold = 8\nred_threshold = 2\n\n'
+                    '[COLORS]\nnormal_bg = "#111111"\norange_bg = "#222222"\nred_bg = "#333333"\n'
+                    'normal_text = "#444444"\norange_text = "#555555"\nred_text = "#666666"\n'
+                    'empty_bg = "#777777"\nempty_text = "#888888"\nblink_red_bg = "#999999"\n'
+                    'blink_orange_bg = "#AAAAAA"\nblink_text = "#BBBBBB"\n\n'
+                    '[APPEARANCE]\nsquare_width = 9\nsquare_height = 4\nsquare_font_size = 12\n\n'
+                    '[WARDROBE_TITLE]\ntext = "LINE-01"\ncolor = "#123456"\nfont_size = 14\n\n'
+                    '[ALERTS]\nnear_expiry_seconds = 45\nblink_interval_ms = 700\n\n'
+                    '[SOUNDS]\nempty_sound_file = ""\noccupied_sound_file = "occupied.wav"\n'
+                    'expired_sound_file = "expired.wav"\n\n'
+                    '[FILES]\nhistory_file = "custom-history.txt"\nstate_file = "custom-state.json"\n'
+                )
+
+            config = load_config(config_path)
+
+            self.assertEqual(config["WARDROBE"]["num_shelves"], 4)
+            self.assertEqual(config["COLORS"]["normal_bg"], "#111111")
+            self.assertEqual(config["WARDROBE_TITLE"]["text"], "LINE-01")
+            self.assertEqual(config["FILES"]["state_file"], "custom-state.json")
+
+    def test_manager_initialization_uses_toml_config(self):
+        class RootStub:
+            def title(self, value):
+                self.title_value = value
+
+            def state(self, value):
+                self.state_value = value
+
+            def resizable(self, width, height):
+                self.resizable_value = (width, height)
+
+        with TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "config.toml")
+            with open(config_path, "w", encoding="utf-8") as config_file:
+                config_file.write(
+                    '[WARDROBE]\nnum_shelves = 2\nnum_rows = 1\nnum_columns = 3\n'
+                    'squares_per_section = 2\n\n'
+                    '[TIMER]\ninitial_time = 90\norange_threshold = 6\nred_threshold = 1\n\n'
+                    '[COLORS]\nnormal_bg = "#101010"\norange_bg = "#202020"\nred_bg = "#303030"\n'
+                    'normal_text = "#404040"\norange_text = "#505050"\nred_text = "#606060"\n'
+                    'empty_bg = "#707070"\nempty_text = "#808080"\nblink_red_bg = "#909090"\n'
+                    'blink_orange_bg = "#A0A0A0"\nblink_text = "#B0B0B0"\n\n'
+                    '[APPEARANCE]\nsquare_width = 11\nsquare_height = 5\nsquare_font_size = 15\n\n'
+                    '[WARDROBE_TITLE]\ntext = "QA-LINE"\ncolor = "#abcdef"\nfont_size = 18\n\n'
+                    '[ALERTS]\nnear_expiry_seconds = 30\nblink_interval_ms = 250\n\n'
+                    '[SOUNDS]\nempty_sound_file = "empty.wav"\noccupied_sound_file = ""\n'
+                    'expired_sound_file = "expired.wav"\n\n'
+                    '[FILES]\nhistory_file = "history-custom.txt"\nstate_file = "state-custom.json"\n'
+                )
+
+            current_dir = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                with patch.object(WardrobeManager, "load_state", return_value={}), patch.object(
+                    WardrobeManager, "load_history"
+                ), patch.object(WardrobeManager, "setup_ui"), patch.object(
+                    WardrobeManager, "start_all_timers"
+                ), patch.object(
+                    WardrobeManager, "schedule_expired_blink"
+                ):
+                    manager = WardrobeManager(RootStub())
+            finally:
+                os.chdir(current_dir)
+
+        self.assertEqual(manager.num_shelves, 2)
+        self.assertEqual(manager.initial_time, 90)
+        self.assertEqual(manager.normal_bg, "#101010")
+        self.assertEqual(manager.wardrobe_name, "QA-LINE")
+        self.assertEqual(manager.near_expiry_seconds, 30)
+        self.assertEqual(manager.empty_sound_file, "empty.wav")
+        self.assertEqual(manager.history_file, "history-custom.txt")
+
     def test_operator_number_must_have_exactly_four_characters(self):
         self.assertFalse(is_valid_operator_number("123"))
         self.assertTrue(is_valid_operator_number("1234"))
