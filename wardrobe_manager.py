@@ -103,7 +103,10 @@ def load_default_config(config_path=None):
     using_default_path = config_path is None
     config_path = (
         os.path.join(APP_DIR, CONFIG_FILE)
-        if using_default_path else config_path
+        if using_default_path else (
+            config_path if os.path.isabs(config_path)
+            else os.path.join(APP_DIR, config_path)
+        )
     )
     legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
 
