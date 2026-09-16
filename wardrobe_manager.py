@@ -100,15 +100,16 @@ def load_config(config_path=None):
 
 def load_default_config(config_path=None):
     """Load the default application configuration and report legacy INI migration issues."""
-    using_default_path = config_path is None
+    default_config_path = os.path.join(APP_DIR, CONFIG_FILE)
     config_path = (
-        os.path.join(APP_DIR, CONFIG_FILE)
-        if using_default_path else (
+        default_config_path
+        if config_path is None else (
             config_path if os.path.isabs(config_path)
             else os.path.join(APP_DIR, config_path)
         )
     )
     legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
+    using_default_path = config_path == default_config_path
 
     if not os.path.exists(config_path):
         if using_default_path and os.path.exists(legacy_config_path):

@@ -194,6 +194,18 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertIn("config.toml", str(error.exception))
         self.assertIn("config.ini", str(error.exception))
 
+    def test_load_default_config_reports_legacy_ini_for_explicit_default_path(self):
+        with TemporaryDirectory() as temp_dir:
+            with patch("wardrobe_manager.APP_DIR", temp_dir):
+                with open(os.path.join(temp_dir, "config.ini"), "w", encoding="utf-8") as config_file:
+                    config_file.write("[WARDROBE]\nnum_shelves = 3\n")
+
+                with self.assertRaises(FileNotFoundError) as error:
+                    load_default_config(os.path.join(temp_dir, "config.toml"))
+
+        self.assertIn("config.toml", str(error.exception))
+        self.assertIn("config.ini", str(error.exception))
+
     def test_load_default_config_reports_missing_default_file(self):
         with TemporaryDirectory() as temp_dir:
             with patch("wardrobe_manager.APP_DIR", temp_dir):
