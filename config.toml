@@ -5,10 +5,10 @@ num_shelves = 3
 # Liczba wierszy (rzędów) na jednej półce
 num_rows = 1
 
-# Liczba kolumn na jednej półce (zawsze 1 - kwadraty są ustawione jeden nad drugim)
+# Liczba kolumn na jednej półce
 num_columns = 3
 
-# Liczba kwadratów w każdej części (ćwiartce) półki (2 - jeden nad drugim)
+# Liczba pozycji JIG w każdej sekcji (2 - jeden nad drugim)
 squares_per_section = 2
 
 [TIMER]

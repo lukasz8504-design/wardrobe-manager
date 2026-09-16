@@ -48,7 +48,7 @@ red_threshold = 1
 - `num_shelves` - Liczba półek w szafie (domyślnie 3)
 - `num_rows` - Liczba rzędów na jednej półce (domyślnie 1)
 - `num_columns` - Liczba kolumn na półce (domyślnie 3)
-- `squares_per_section` - Liczba JIG w każdej pozycji (domyślnie 2 - jeden nad drugim)
+- `squares_per_section` - Liczba pozycji JIG w każdej sekcji (domyślnie 2 - jeden nad drugim)
 
 ### [TIMER]
 - `initial_time` - Czas początkowy w minutach (domyślnie 100)

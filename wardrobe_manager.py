@@ -89,25 +89,24 @@ def parse_history_line(line):
 
 def load_config(config_path=CONFIG_FILE):
     """Load application configuration from a TOML file."""
-    normalized_config_path = os.path.abspath(config_path)
-    normalized_default_path = os.path.abspath(CONFIG_FILE)
-    legacy_config_path = os.path.join(
-        os.path.dirname(normalized_config_path), LEGACY_CONFIG_FILE
-    )
+    with open(config_path, "rb") as config_file:
+        return tomllib.load(config_file)
+
+
+def load_default_config():
+    """Load the default application configuration and report legacy INI migration issues."""
+    config_path = os.path.abspath(CONFIG_FILE)
+    legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
 
     if not os.path.exists(config_path):
-        if (
-            normalized_config_path == normalized_default_path
-            and os.path.exists(legacy_config_path)
-        ):
+        if os.path.exists(legacy_config_path):
             raise FileNotFoundError(
                 "Missing config.toml. Found legacy config.ini; rename it to config.toml "
                 "and rewrite string values in TOML syntax."
             )
-        raise FileNotFoundError(f"Missing configuration file: {config_path}")
+        raise FileNotFoundError(f"Missing configuration file: {CONFIG_FILE}")
 
-    with open(config_path, "rb") as config_file:
-        return tomllib.load(config_file)
+    return load_config(config_path)
 
 
 class WardrobeManager:
@@ -116,7 +115,7 @@ class WardrobeManager:
         self.root.title("Wardrobe Manager - Szafa")
         
         # Wczytanie konfiguracji
-        self.apply_config(load_config())
+        self.apply_config(load_default_config())
         
         # Maksymalizuj okno
         state_method = getattr(self.root, "state", None)

@@ -30,6 +30,7 @@ from wardrobe_manager import (
     calculate_remaining_time,
     is_valid_operator_number,
     load_config,
+    load_default_config,
     parse_history_line,
 )
 
@@ -62,7 +63,7 @@ class TimerCalculationTests(unittest.TestCase):
             self.assertEqual(config["WARDROBE_TITLE"]["text"], "LINE-01")
             self.assertEqual(config["FILES"]["state_file"], "custom-state.json")
 
-    def test_load_config_reports_legacy_ini_migration(self):
+    def test_load_default_config_reports_legacy_ini_migration(self):
         with TemporaryDirectory() as temp_dir:
             current_dir = os.getcwd()
             os.chdir(temp_dir)
@@ -71,23 +72,7 @@ class TimerCalculationTests(unittest.TestCase):
                     config_file.write("[WARDROBE]\nnum_shelves = 3\n")
 
                 with self.assertRaises(FileNotFoundError) as error:
-                    load_config()
-            finally:
-                os.chdir(current_dir)
-
-        self.assertIn("config.toml", str(error.exception))
-        self.assertIn("config.ini", str(error.exception))
-
-    def test_load_config_reports_legacy_ini_migration_for_equivalent_default_path(self):
-        with TemporaryDirectory() as temp_dir:
-            current_dir = os.getcwd()
-            os.chdir(temp_dir)
-            try:
-                with open("config.ini", "w", encoding="utf-8") as config_file:
-                    config_file.write("[WARDROBE]\nnum_shelves = 3\n")
-
-                with self.assertRaises(FileNotFoundError) as error:
-                    load_config("./config.toml")
+                    load_default_config()
             finally:
                 os.chdir(current_dir)
 
