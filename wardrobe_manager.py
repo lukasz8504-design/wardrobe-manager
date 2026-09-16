@@ -125,7 +125,7 @@ class WardrobeManager:
         self.root.title("Ocen Manager - Szafa")
         
         # Wczytanie konfiguracji
-        self.apply_config(load_default_config())
+        self.apply_config(load_default_config(), APP_DIR)
         
         # Maksymalizuj okno
         state_method = getattr(self.root, "state", None)
@@ -157,9 +157,10 @@ class WardrobeManager:
         self.start_all_timers()
         self.schedule_expired_blink()
 
-    def apply_config(self, config):
+    def apply_config(self, config, config_dir=None):
         """Apply parsed configuration data to instance attributes."""
         self.config = config
+        config_dir = config_dir or APP_DIR
 
         # Parametry szafy
         self.num_shelves = self.config['WARDROBE']['num_shelves']
@@ -199,8 +200,19 @@ class WardrobeManager:
         self.expired_sound_file = self.config['SOUNDS']['expired_sound_file']
 
         # Pliki
-        self.history_file = self.config['FILES']['history_file']
-        self.state_file = self.config['FILES']['state_file']
+        self.history_file = self.resolve_config_path(
+            self.config['FILES']['history_file'], config_dir
+        )
+        self.state_file = self.resolve_config_path(
+            self.config['FILES']['state_file'], config_dir
+        )
+
+    @staticmethod
+    def resolve_config_path(path_value, config_dir):
+        """Resolve relative config file paths against the configuration directory."""
+        if os.path.isabs(path_value):
+            return path_value
+        return os.path.join(config_dir, path_value)
         
     def setup_ui(self):
         """Tworzenie interfejsu użytkownika"""

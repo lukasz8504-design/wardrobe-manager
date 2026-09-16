@@ -26,6 +26,7 @@ sys.modules.setdefault("tkinter", fake_tkinter)
 sys.modules.setdefault("winsound", ModuleType("winsound"))
 
 from wardrobe_manager import (
+    APP_DIR,
     WardrobeManager,
     calculate_remaining_time,
     is_valid_operator_number,
@@ -253,7 +254,8 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(manager.wardrobe_name, "QA-LINE")
         self.assertEqual(manager.near_expiry_seconds, 30)
         self.assertEqual(manager.empty_sound_file, "empty.wav")
-        self.assertEqual(manager.history_file, "history-custom.txt")
+        self.assertEqual(manager.history_file, os.path.join(temp_dir, "history-custom.txt"))
+        self.assertEqual(manager.state_file, os.path.join(temp_dir, "state-custom.json"))
         self.assertEqual(manager.root.title_value, "Ocen Manager - Szafa")
         self.assertEqual(manager.root.state_value, "zoomed")
 
@@ -289,7 +291,7 @@ class TimerCalculationTests(unittest.TestCase):
                     manager = WardrobeManager(RootStub())
 
         self.assertEqual(manager.initial_time, 10)
-        self.assertEqual(manager.state_file, "state-custom.json")
+        self.assertEqual(manager.state_file, os.path.join(temp_dir, "state-custom.json"))
         self.assertEqual(manager.root.title_value, "Ocen Manager - Szafa")
 
     def test_apply_config_maps_toml_sections_to_attributes(self):
@@ -358,7 +360,7 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(manager.wardrobe_name, "ASSEMBLY")
         self.assertEqual(manager.blink_interval_ms, 900)
         self.assertEqual(manager.occupied_sound_file, "occupied.wav")
-        self.assertEqual(manager.state_file, "state.json")
+        self.assertEqual(manager.state_file, os.path.join(APP_DIR, "state.json"))
 
     def test_operator_number_must_have_exactly_four_characters(self):
         self.assertFalse(is_valid_operator_number("123"))
