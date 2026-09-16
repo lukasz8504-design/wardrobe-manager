@@ -126,6 +126,15 @@ def write_config_file(directory, content):
 
 
 class TimerCalculationTests(unittest.TestCase):
+    def test_load_config_uses_app_directory_by_default(self):
+        with TemporaryDirectory() as temp_dir:
+            write_config_file(temp_dir, build_config_toml(title_text="DEFAULT-APP-DIR"))
+
+            with patch("wardrobe_manager.APP_DIR", temp_dir):
+                config = load_config()
+
+        self.assertEqual(config["WARDROBE_TITLE"]["text"], "DEFAULT-APP-DIR")
+
     def test_load_config_reads_toml_values(self):
         with TemporaryDirectory() as temp_dir:
             config_path = write_config_file(

@@ -90,7 +90,10 @@ def parse_history_line(line):
 
 def load_config(config_path=None):
     """Load application configuration from a TOML file."""
-    config_path = config_path or CONFIG_FILE
+    config_path = (
+        os.path.join(APP_DIR, CONFIG_FILE)
+        if config_path is None else config_path
+    )
     with open(config_path, "rb") as config_file:
         return tomllib.load(config_file)
 
