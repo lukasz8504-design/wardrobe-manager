@@ -174,29 +174,21 @@ class TimerCalculationTests(unittest.TestCase):
 
     def test_load_default_config_reports_legacy_ini_migration(self):
         with TemporaryDirectory() as temp_dir:
-            current_dir = os.getcwd()
-            os.chdir(temp_dir)
-            try:
-                with open("config.ini", "w", encoding="utf-8") as config_file:
+            with patch("wardrobe_manager.APP_DIR", temp_dir):
+                with open(os.path.join(temp_dir, "config.ini"), "w", encoding="utf-8") as config_file:
                     config_file.write("[WARDROBE]\nnum_shelves = 3\n")
 
                 with self.assertRaises(FileNotFoundError) as error:
                     load_default_config()
-            finally:
-                os.chdir(current_dir)
 
         self.assertIn("config.toml", str(error.exception))
         self.assertIn("config.ini", str(error.exception))
 
     def test_load_default_config_reports_missing_default_file(self):
         with TemporaryDirectory() as temp_dir:
-            current_dir = os.getcwd()
-            os.chdir(temp_dir)
-            try:
+            with patch("wardrobe_manager.APP_DIR", temp_dir):
                 with self.assertRaises(FileNotFoundError) as error:
                     load_default_config()
-            finally:
-                os.chdir(current_dir)
 
         self.assertEqual(str(error.exception), "Missing configuration file: config.toml")
 
@@ -219,11 +211,14 @@ class TimerCalculationTests(unittest.TestCase):
             def title(self, value):
                 self.title_value = value
 
+            def state(self, value):
+                self.state_value = value
+
             def resizable(self, width, height):
                 self.resizable_value = (width, height)
 
         with TemporaryDirectory() as temp_dir:
-            config_path = write_config_file(
+            write_config_file(
                 temp_dir,
                 build_config_toml(
                     num_shelves=2,
@@ -233,10 +228,7 @@ class TimerCalculationTests(unittest.TestCase):
                     expired_sound_file="expired.wav",
                 ),
             )
-
-            current_dir = os.getcwd()
-            os.chdir(temp_dir)
-            try:
+            with patch("wardrobe_manager.APP_DIR", temp_dir):
                 with patch.object(WardrobeManager, "load_state", return_value={}), patch.object(
                     WardrobeManager, "load_history"
                 ), patch.object(WardrobeManager, "setup_ui"), patch.object(
@@ -245,8 +237,6 @@ class TimerCalculationTests(unittest.TestCase):
                     WardrobeManager, "schedule_expired_blink"
                 ):
                     manager = WardrobeManager(RootStub())
-            finally:
-                os.chdir(current_dir)
 
         self.assertEqual(manager.num_shelves, 2)
         self.assertEqual(manager.initial_time, 90)
@@ -256,6 +246,7 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(manager.empty_sound_file, "empty.wav")
         self.assertEqual(manager.history_file, "history-custom.txt")
         self.assertEqual(manager.root.title_value, "Ocen Manager - Szafa")
+        self.assertEqual(manager.root.state_value, "zoomed")
 
     def test_manager_initialization_ignores_unsupported_zoom_state(self):
         class RootStub:
@@ -278,10 +269,7 @@ class TimerCalculationTests(unittest.TestCase):
                     initial_time=10,
                 ),
             )
-
-            current_dir = os.getcwd()
-            os.chdir(temp_dir)
-            try:
+            with patch("wardrobe_manager.APP_DIR", temp_dir):
                 with patch.object(WardrobeManager, "load_state", return_value={}), patch.object(
                     WardrobeManager, "load_history"
                 ), patch.object(WardrobeManager, "setup_ui"), patch.object(
@@ -290,8 +278,6 @@ class TimerCalculationTests(unittest.TestCase):
                     WardrobeManager, "schedule_expired_blink"
                 ):
                     manager = WardrobeManager(RootStub())
-            finally:
-                os.chdir(current_dir)
 
         self.assertEqual(manager.initial_time, 10)
         self.assertEqual(manager.state_file, "state-custom.json")

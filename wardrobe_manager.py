@@ -18,6 +18,7 @@ HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
 OPERATOR_NUMBER_LENGTH = 4
 CONFIG_FILE = "config.toml"
 LEGACY_CONFIG_FILE = "config.ini"
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TK_TCL_ERROR = getattr(tk, "TclError", None)
 
 
@@ -97,7 +98,10 @@ def load_config(config_path=None):
 def load_default_config(config_path=None):
     """Load the default application configuration and report legacy INI migration issues."""
     using_default_path = config_path is None
-    config_path = os.path.abspath(config_path or CONFIG_FILE)
+    config_path = (
+        os.path.join(APP_DIR, CONFIG_FILE)
+        if using_default_path else os.path.abspath(config_path)
+    )
     legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
 
     if not os.path.exists(config_path):
