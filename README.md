@@ -1,4 +1,4 @@
-# Wardrobe Manager - Aplikacja do zarządzania szafą
+# Ocen Manager - Aplikacja do zarządzania szafą
 
 Aplikacja do zarządzania szafą z systemem timerów dla każdego JIG i historią wprowadzanych danych.
 
@@ -29,13 +29,28 @@ python3 wardrobe_manager.py
 
 ## Konfiguracja
 
-Wszystkie ustawienia znajdują się w pliku `config.ini`:
+Wszystkie ustawienia znajdują się w pliku `config.toml`:
+
+```toml
+[WARDROBE]
+num_shelves = 3
+num_rows = 1
+num_columns = 3
+squares_per_section = 2
+
+[TIMER]
+initial_time = 100
+orange_threshold = 5
+red_threshold = 1
+```
+
+Powyższy przykład pokazuje tylko fragment konfiguracji. Aplikacja wymaga wszystkich sekcji obecnych w dołączonym pliku `config.toml`.
 
 ### [WARDROBE]
 - `num_shelves` - Liczba półek w szafie (domyślnie 3)
-- `num_rows` - Liczba rzędów na jednej półce (domyślnie 3)
-- `num_columns` - Liczba kolumn (zawsze 1 - JIG są ustawione jeden nad drugim)
-- `squares_per_section` - Liczba JIG w każdej pozycji (domyślnie 2 - jeden za drugim)
+- `num_rows` - Liczba rzędów na jednej półce (domyślnie 1)
+- `num_columns` - Liczba kolumn na półce (domyślnie 3)
+- `squares_per_section` - Liczba pozycji JIG w każdej sekcji (domyślnie 2 - jeden nad drugim)
 
 ### [TIMER]
 - `initial_time` - Czas początkowy w minutach (domyślnie 100)
@@ -44,7 +59,7 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 
 ### [COLORS]
 - Kolory tła i tekstu dla różnych stanów timera
-- Format RGB (hex): #RRGGBB
+- Format RGB (hex): `#RRGGBB`
 
 ### [FILES]
 - `history_file` - Ścieżka do pliku historii (domyślnie `history.txt`)
@@ -54,6 +69,20 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 - `square_width` - Szerokość JIG w znakach (domyślnie 8)
 - `square_height` - Wysokość JIG w linijkach (domyślnie 2)
 - `square_font_size` - Rozmiar czcionki dla numerów JIG (domyślnie 10)
+
+### [WARDROBE_TITLE]
+- `text` - Nazwa wyświetlana nad półkami (domyślnie `DRY-001`)
+- `color` - Kolor tytułu w formacie `#RRGGBB`
+- `font_size` - Rozmiar czcionki tytułu
+
+### [ALERTS]
+- `near_expiry_seconds` - Próg ostrzeżenia przy dodawaniu nowego JIG-a
+- `blink_interval_ms` - Interwał migania dla przeterminowanego JIG-a
+
+### [SOUNDS]
+- `empty_sound_file` - Dźwięk przy opróżnieniu pozycji
+- `occupied_sound_file` - Dźwięk przy zajęciu pozycji
+- `expired_sound_file` - Dźwięk dla wygasłego JIG-a
 
 ## Użytkowanie
 
@@ -86,10 +115,19 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 ## Pliki
 
 - `wardrobe_manager.py` - Główny plik aplikacji
-- `config.ini` - Plik konfiguracyjny
+- `config.toml` - Plik konfiguracyjny
 - `history.txt` - Historia wprowadzonych JIG (tworzona automatycznie)
 - `wardrobe_state.json` - Stan obecny szafy z timerami i czasami włożenia JIG (tworzony automatycznie)
 - `README.md` - Ten plik
+
+## Migracja z INI do TOML
+
+Jeśli używasz starego `config.ini`, użyj dołączonego `config.toml` jako wzorca. Nie wystarczy samo przemianowanie pliku — najpierw trzeba przepisać stare wartości do poprawnej składni TOML w strukturze nowego `config.toml`:
+
+- sekcje `[SEKCJA]` pozostają bez zmian,
+- liczby zapisuj bez cudzysłowów, np. `initial_time = 100`,
+- tekst i ścieżki zapisuj w cudzysłowach, np. `history_file = "history.txt"`,
+- kolory hex również zapisuj jako tekst, np. `normal_bg = "#f0f0f0"`.
 
 ## Uwagi
 

@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import messagebox
-import configparser
 import json
 import os
 from datetime import datetime
@@ -9,9 +8,18 @@ from threading import Thread
 import time
 import winsound
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ uses tomllib
+    import tomli as tomllib
+
 
 HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
 OPERATOR_NUMBER_LENGTH = 4
+CONFIG_FILE = "config.toml"
+LEGACY_CONFIG_FILE = "config.ini"
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+TK_TCL_ERROR = getattr(tk, "TclError", None)
 
 
 def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
@@ -80,58 +88,59 @@ def parse_history_line(line):
     }
 
 
+def load_config(config_path=None):
+    """Load application configuration from a TOML file."""
+    config_path = (
+        os.path.join(APP_DIR, CONFIG_FILE)
+        if config_path is None else config_path
+    )
+    with open(config_path, "rb") as config_file:
+        return tomllib.load(config_file)
+
+
+def load_default_config(config_path=None):
+    """Load the default application configuration and report legacy INI migration issues."""
+    default_config_path = os.path.join(APP_DIR, CONFIG_FILE)
+    config_path = (
+        default_config_path
+        if config_path is None else (
+            config_path if os.path.isabs(config_path)
+            else os.path.join(APP_DIR, config_path)
+        )
+    )
+    legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
+    using_default_path = config_path == default_config_path
+
+    if not os.path.exists(config_path):
+        if using_default_path and os.path.exists(legacy_config_path):
+            raise FileNotFoundError(
+                "Missing config.toml. Found legacy config.ini; rewrite it into valid TOML "
+                "syntax and save it as config.toml."
+            )
+        missing_path = CONFIG_FILE if using_default_path else config_path
+        raise FileNotFoundError(f"Missing configuration file: {missing_path}")
+
+    return load_config(config_path)
+
+
 class WardrobeManager:
     def __init__(self, root):
         self.root = root
-        self.root.title("Wardrobe Manager - Szafa")
+        self.root.title("Ocen Manager - Szafa")
         
         # Wczytanie konfiguracji
-        self.config = configparser.ConfigParser()
-        self.config.read('config.ini')
-        
-        # Parametry szafy
-        self.num_shelves = self.config.getint('WARDROBE', 'num_shelves')
-        self.num_rows = self.config.getint('WARDROBE', 'num_rows')
-        self.num_columns = self.config.getint('WARDROBE', 'num_columns')
-        self.squares_per_section = self.config.getint('WARDROBE', 'squares_per_section')
-        
-        # Parametry timera
-        self.initial_time = self.config.getint('TIMER', 'initial_time')
-        self.orange_threshold = self.config.getint('TIMER', 'orange_threshold')
-        self.red_threshold = self.config.getint('TIMER', 'red_threshold')
-        
-        # Kolory
-        self.normal_bg = self.config.get('COLORS', 'normal_bg')
-        self.orange_bg = self.config.get('COLORS', 'orange_bg')
-        self.red_bg = self.config.get('COLORS', 'red_bg')
-        self.normal_text = self.config.get('COLORS', 'normal_text')
-        self.orange_text = self.config.get('COLORS', 'orange_text')
-        self.red_text = self.config.get('COLORS', 'red_text')
-        self.empty_bg = self.config.get('COLORS', 'empty_bg')
-        self.empty_text = self.config.get('COLORS', 'empty_text')
-        self.blink_red_bg = self.config.get('COLORS', 'blink_red_bg')
-        self.blink_orange_bg = self.config.get('COLORS', 'blink_orange_bg')
-        self.blink_text = self.config.get('COLORS', 'blink_text')
-        
-        # Wygląd
-        self.jig_width = self.config.getint('APPEARANCE', 'square_width')
-        self.jig_height = self.config.getint('APPEARANCE', 'square_height')
-        self.jig_font_size = self.config.getint('APPEARANCE', 'square_font_size')
-        self.wardrobe_name = self.config.get('WARDROBE_TITLE', 'text')
-        self.wardrobe_name_color = self.config.get('WARDROBE_TITLE', 'color')
-        self.wardrobe_name_font_size = self.config.getint('WARDROBE_TITLE', 'font_size')
-        self.near_expiry_seconds = self.config.getint('ALERTS', 'near_expiry_seconds')
-        self.blink_interval_ms = self.config.getint('ALERTS', 'blink_interval_ms')
-        self.empty_sound_file = self.config.get('SOUNDS', 'empty_sound_file')
-        self.occupied_sound_file = self.config.get('SOUNDS', 'occupied_sound_file')
-        self.expired_sound_file = self.config.get('SOUNDS', 'expired_sound_file')
-        
-        # Pliki
-        self.history_file = self.config.get('FILES', 'history_file')
-        self.state_file = self.config.get('FILES', 'state_file')
+        self.apply_config(load_default_config(), APP_DIR)
         
         # Maksymalizuj okno
-        self.root.state('zoomed')  # Windows
+        state_method = getattr(self.root, "state", None)
+        if callable(state_method):
+            if TK_TCL_ERROR is None:
+                state_method('zoomed')  # Windows
+            else:
+                try:
+                    state_method('zoomed')  # Windows
+                except TK_TCL_ERROR:
+                    pass
         self.root.resizable(True, True)
         
         # Stan timera - osobny timer dla każdego JIG
@@ -151,6 +160,63 @@ class WardrobeManager:
         self.setup_ui()
         self.start_all_timers()
         self.schedule_expired_blink()
+
+    def apply_config(self, config, config_dir=None):
+        """Apply parsed configuration data to instance attributes."""
+        self.config = config
+        config_dir = config_dir or APP_DIR
+
+        # Parametry szafy
+        self.num_shelves = self.config['WARDROBE']['num_shelves']
+        self.num_rows = self.config['WARDROBE']['num_rows']
+        self.num_columns = self.config['WARDROBE']['num_columns']
+        self.squares_per_section = self.config['WARDROBE']['squares_per_section']
+
+        # Parametry timera
+        self.initial_time = self.config['TIMER']['initial_time']
+        self.orange_threshold = self.config['TIMER']['orange_threshold']
+        self.red_threshold = self.config['TIMER']['red_threshold']
+
+        # Kolory
+        self.normal_bg = self.config['COLORS']['normal_bg']
+        self.orange_bg = self.config['COLORS']['orange_bg']
+        self.red_bg = self.config['COLORS']['red_bg']
+        self.normal_text = self.config['COLORS']['normal_text']
+        self.orange_text = self.config['COLORS']['orange_text']
+        self.red_text = self.config['COLORS']['red_text']
+        self.empty_bg = self.config['COLORS']['empty_bg']
+        self.empty_text = self.config['COLORS']['empty_text']
+        self.blink_red_bg = self.config['COLORS']['blink_red_bg']
+        self.blink_orange_bg = self.config['COLORS']['blink_orange_bg']
+        self.blink_text = self.config['COLORS']['blink_text']
+
+        # Wygląd
+        self.jig_width = self.config['APPEARANCE']['square_width']
+        self.jig_height = self.config['APPEARANCE']['square_height']
+        self.jig_font_size = self.config['APPEARANCE']['square_font_size']
+        self.wardrobe_name = self.config['WARDROBE_TITLE']['text']
+        self.wardrobe_name_color = self.config['WARDROBE_TITLE']['color']
+        self.wardrobe_name_font_size = self.config['WARDROBE_TITLE']['font_size']
+        self.near_expiry_seconds = self.config['ALERTS']['near_expiry_seconds']
+        self.blink_interval_ms = self.config['ALERTS']['blink_interval_ms']
+        self.empty_sound_file = self.config['SOUNDS']['empty_sound_file']
+        self.occupied_sound_file = self.config['SOUNDS']['occupied_sound_file']
+        self.expired_sound_file = self.config['SOUNDS']['expired_sound_file']
+
+        # Pliki
+        self.history_file = self.resolve_config_path(
+            self.config['FILES']['history_file'], config_dir
+        )
+        self.state_file = self.resolve_config_path(
+            self.config['FILES']['state_file'], config_dir
+        )
+
+    @staticmethod
+    def resolve_config_path(path_value, config_dir):
+        """Resolve relative config file paths against the configuration directory."""
+        if os.path.isabs(path_value):
+            return path_value
+        return os.path.join(config_dir, path_value)
         
     def setup_ui(self):
         """Tworzenie interfejsu użytkownika"""
