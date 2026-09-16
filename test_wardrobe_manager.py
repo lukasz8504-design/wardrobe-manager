@@ -20,6 +20,7 @@ fake_tkinter.X = "x"
 fake_tkinter.LEFT = "left"
 fake_tkinter.SUNKEN = "sunken"
 fake_tkinter.RAISED = "raised"
+fake_tkinter.TclError = type("TclError", (Exception,), {})
 
 sys.modules.setdefault("tkinter", fake_tkinter)
 sys.modules.setdefault("winsound", ModuleType("winsound"))
@@ -125,6 +126,52 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(manager.near_expiry_seconds, 30)
         self.assertEqual(manager.empty_sound_file, "empty.wav")
         self.assertEqual(manager.history_file, "history-custom.txt")
+
+    def test_manager_initialization_ignores_unsupported_zoom_state(self):
+        class RootStub:
+            def title(self, value):
+                self.title_value = value
+
+            def state(self, value):
+                raise fake_tkinter.TclError("zoomed not supported")
+
+            def resizable(self, width, height):
+                self.resizable_value = (width, height)
+
+        with TemporaryDirectory() as temp_dir:
+            with open(os.path.join(temp_dir, "config.toml"), "w", encoding="utf-8") as config_file:
+                config_file.write(
+                    '[WARDROBE]\nnum_shelves = 1\nnum_rows = 1\nnum_columns = 1\n'
+                    'squares_per_section = 1\n\n'
+                    '[TIMER]\ninitial_time = 10\norange_threshold = 5\nred_threshold = 1\n\n'
+                    '[COLORS]\nnormal_bg = "#101010"\norange_bg = "#202020"\nred_bg = "#303030"\n'
+                    'normal_text = "#404040"\norange_text = "#505050"\nred_text = "#606060"\n'
+                    'empty_bg = "#707070"\nempty_text = "#808080"\nblink_red_bg = "#909090"\n'
+                    'blink_orange_bg = "#A0A0A0"\nblink_text = "#B0B0B0"\n\n'
+                    '[APPEARANCE]\nsquare_width = 11\nsquare_height = 5\nsquare_font_size = 15\n\n'
+                    '[WARDROBE_TITLE]\ntext = "QA-LINE"\ncolor = "#abcdef"\nfont_size = 18\n\n'
+                    '[ALERTS]\nnear_expiry_seconds = 30\nblink_interval_ms = 250\n\n'
+                    '[SOUNDS]\nempty_sound_file = ""\noccupied_sound_file = ""\n'
+                    'expired_sound_file = ""\n\n'
+                    '[FILES]\nhistory_file = "history-custom.txt"\nstate_file = "state-custom.json"\n'
+                )
+
+            current_dir = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                with patch.object(WardrobeManager, "load_state", return_value={}), patch.object(
+                    WardrobeManager, "load_history"
+                ), patch.object(WardrobeManager, "setup_ui"), patch.object(
+                    WardrobeManager, "start_all_timers"
+                ), patch.object(
+                    WardrobeManager, "schedule_expired_blink"
+                ):
+                    manager = WardrobeManager(RootStub())
+            finally:
+                os.chdir(current_dir)
+
+        self.assertEqual(manager.initial_time, 10)
+        self.assertEqual(manager.state_file, "state-custom.json")
 
     def test_apply_config_maps_toml_sections_to_attributes(self):
         manager = WardrobeManager.__new__(WardrobeManager)

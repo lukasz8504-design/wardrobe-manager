@@ -120,7 +120,7 @@ red_threshold = 1
 
 ## Migracja z INI do TOML
 
-Jeśli używasz starego `config.ini`, zmień nazwę pliku na `config.toml` i przepisz wartości do składni TOML:
+Jeśli używasz starego `config.ini`, nie wystarczy samo przemianowanie pliku na `config.toml` — najpierw trzeba przepisać wartości do poprawnej składni TOML, a dopiero potem zapisać plik jako `config.toml`:
 
 - sekcje `[SEKCJA]` pozostają bez zmian,
 - liczby zapisuj bez cudzysłowów, np. `initial_time = 100`,

@@ -18,6 +18,7 @@ HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
 OPERATOR_NUMBER_LENGTH = 4
 CONFIG_FILE = "config.toml"
 LEGACY_CONFIG_FILE = "config.ini"
+TK_TCL_ERROR = getattr(tk, "TclError", None)
 
 
 def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
@@ -111,10 +112,13 @@ class WardrobeManager:
         # Maksymalizuj okno
         state_method = getattr(self.root, "state", None)
         if callable(state_method):
-            try:
+            if TK_TCL_ERROR is None:
                 state_method('zoomed')  # Windows
-            except Exception:
-                pass
+            else:
+                try:
+                    state_method('zoomed')  # Windows
+                except TK_TCL_ERROR:
+                    pass
         self.root.resizable(True, True)
         
         # Stan timera - osobny timer dla każdego JIG
