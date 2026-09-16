@@ -113,6 +113,74 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(manager.empty_sound_file, "empty.wav")
         self.assertEqual(manager.history_file, "history-custom.txt")
 
+    def test_apply_config_maps_toml_sections_to_attributes(self):
+        manager = WardrobeManager.__new__(WardrobeManager)
+
+        manager.apply_config(
+            {
+                "WARDROBE": {
+                    "num_shelves": 6,
+                    "num_rows": 2,
+                    "num_columns": 4,
+                    "squares_per_section": 3,
+                },
+                "TIMER": {
+                    "initial_time": 80,
+                    "orange_threshold": 7,
+                    "red_threshold": 2,
+                },
+                "COLORS": {
+                    "normal_bg": "#010101",
+                    "orange_bg": "#020202",
+                    "red_bg": "#030303",
+                    "normal_text": "#040404",
+                    "orange_text": "#050505",
+                    "red_text": "#060606",
+                    "empty_bg": "#070707",
+                    "empty_text": "#080808",
+                    "blink_red_bg": "#090909",
+                    "blink_orange_bg": "#101010",
+                    "blink_text": "#111111",
+                },
+                "APPEARANCE": {
+                    "square_width": 12,
+                    "square_height": 6,
+                    "square_font_size": 16,
+                },
+                "WARDROBE_TITLE": {
+                    "text": "ASSEMBLY",
+                    "color": "#121212",
+                    "font_size": 20,
+                },
+                "ALERTS": {
+                    "near_expiry_seconds": 15,
+                    "blink_interval_ms": 900,
+                },
+                "SOUNDS": {
+                    "empty_sound_file": "empty.wav",
+                    "occupied_sound_file": "occupied.wav",
+                    "expired_sound_file": "expired.wav",
+                },
+                "FILES": {
+                    "history_file": "history.log",
+                    "state_file": "state.json",
+                },
+            }
+        )
+
+        self.assertEqual(manager.num_shelves, 6)
+        self.assertEqual(manager.num_rows, 2)
+        self.assertEqual(manager.num_columns, 4)
+        self.assertEqual(manager.squares_per_section, 3)
+        self.assertEqual(manager.initial_time, 80)
+        self.assertEqual(manager.red_threshold, 2)
+        self.assertEqual(manager.blink_text, "#111111")
+        self.assertEqual(manager.jig_width, 12)
+        self.assertEqual(manager.wardrobe_name, "ASSEMBLY")
+        self.assertEqual(manager.blink_interval_ms, 900)
+        self.assertEqual(manager.occupied_sound_file, "occupied.wav")
+        self.assertEqual(manager.state_file, "state.json")
+
     def test_operator_number_must_have_exactly_four_characters(self):
         self.assertFalse(is_valid_operator_number("123"))
         self.assertTrue(is_valid_operator_number("1234"))

@@ -97,48 +97,7 @@ class WardrobeManager:
         self.root.title("Wardrobe Manager - Szafa")
         
         # Wczytanie konfiguracji
-        self.config = load_config()
-        
-        # Parametry szafy
-        self.num_shelves = self.config['WARDROBE']['num_shelves']
-        self.num_rows = self.config['WARDROBE']['num_rows']
-        self.num_columns = self.config['WARDROBE']['num_columns']
-        self.squares_per_section = self.config['WARDROBE']['squares_per_section']
-        
-        # Parametry timera
-        self.initial_time = self.config['TIMER']['initial_time']
-        self.orange_threshold = self.config['TIMER']['orange_threshold']
-        self.red_threshold = self.config['TIMER']['red_threshold']
-        
-        # Kolory
-        self.normal_bg = self.config['COLORS']['normal_bg']
-        self.orange_bg = self.config['COLORS']['orange_bg']
-        self.red_bg = self.config['COLORS']['red_bg']
-        self.normal_text = self.config['COLORS']['normal_text']
-        self.orange_text = self.config['COLORS']['orange_text']
-        self.red_text = self.config['COLORS']['red_text']
-        self.empty_bg = self.config['COLORS']['empty_bg']
-        self.empty_text = self.config['COLORS']['empty_text']
-        self.blink_red_bg = self.config['COLORS']['blink_red_bg']
-        self.blink_orange_bg = self.config['COLORS']['blink_orange_bg']
-        self.blink_text = self.config['COLORS']['blink_text']
-        
-        # Wygląd
-        self.jig_width = self.config['APPEARANCE']['square_width']
-        self.jig_height = self.config['APPEARANCE']['square_height']
-        self.jig_font_size = self.config['APPEARANCE']['square_font_size']
-        self.wardrobe_name = self.config['WARDROBE_TITLE']['text']
-        self.wardrobe_name_color = self.config['WARDROBE_TITLE']['color']
-        self.wardrobe_name_font_size = self.config['WARDROBE_TITLE']['font_size']
-        self.near_expiry_seconds = self.config['ALERTS']['near_expiry_seconds']
-        self.blink_interval_ms = self.config['ALERTS']['blink_interval_ms']
-        self.empty_sound_file = self.config['SOUNDS']['empty_sound_file']
-        self.occupied_sound_file = self.config['SOUNDS']['occupied_sound_file']
-        self.expired_sound_file = self.config['SOUNDS']['expired_sound_file']
-        
-        # Pliki
-        self.history_file = self.config['FILES']['history_file']
-        self.state_file = self.config['FILES']['state_file']
+        self.apply_config(load_config())
         
         # Maksymalizuj okno
         self.root.state('zoomed')  # Windows
@@ -161,6 +120,51 @@ class WardrobeManager:
         self.setup_ui()
         self.start_all_timers()
         self.schedule_expired_blink()
+
+    def apply_config(self, config):
+        """Apply parsed configuration data to instance attributes."""
+        self.config = config
+
+        # Parametry szafy
+        self.num_shelves = self.config['WARDROBE']['num_shelves']
+        self.num_rows = self.config['WARDROBE']['num_rows']
+        self.num_columns = self.config['WARDROBE']['num_columns']
+        self.squares_per_section = self.config['WARDROBE']['squares_per_section']
+
+        # Parametry timera
+        self.initial_time = self.config['TIMER']['initial_time']
+        self.orange_threshold = self.config['TIMER']['orange_threshold']
+        self.red_threshold = self.config['TIMER']['red_threshold']
+
+        # Kolory
+        self.normal_bg = self.config['COLORS']['normal_bg']
+        self.orange_bg = self.config['COLORS']['orange_bg']
+        self.red_bg = self.config['COLORS']['red_bg']
+        self.normal_text = self.config['COLORS']['normal_text']
+        self.orange_text = self.config['COLORS']['orange_text']
+        self.red_text = self.config['COLORS']['red_text']
+        self.empty_bg = self.config['COLORS']['empty_bg']
+        self.empty_text = self.config['COLORS']['empty_text']
+        self.blink_red_bg = self.config['COLORS']['blink_red_bg']
+        self.blink_orange_bg = self.config['COLORS']['blink_orange_bg']
+        self.blink_text = self.config['COLORS']['blink_text']
+
+        # Wygląd
+        self.jig_width = self.config['APPEARANCE']['square_width']
+        self.jig_height = self.config['APPEARANCE']['square_height']
+        self.jig_font_size = self.config['APPEARANCE']['square_font_size']
+        self.wardrobe_name = self.config['WARDROBE_TITLE']['text']
+        self.wardrobe_name_color = self.config['WARDROBE_TITLE']['color']
+        self.wardrobe_name_font_size = self.config['WARDROBE_TITLE']['font_size']
+        self.near_expiry_seconds = self.config['ALERTS']['near_expiry_seconds']
+        self.blink_interval_ms = self.config['ALERTS']['blink_interval_ms']
+        self.empty_sound_file = self.config['SOUNDS']['empty_sound_file']
+        self.occupied_sound_file = self.config['SOUNDS']['occupied_sound_file']
+        self.expired_sound_file = self.config['SOUNDS']['expired_sound_file']
+
+        # Pliki
+        self.history_file = self.config['FILES']['history_file']
+        self.state_file = self.config['FILES']['state_file']
         
     def setup_ui(self):
         """Tworzenie interfejsu użytkownika"""
