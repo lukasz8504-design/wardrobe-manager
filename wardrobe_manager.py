@@ -87,15 +87,16 @@ def parse_history_line(line):
     }
 
 
-def load_config(config_path=CONFIG_FILE):
+def load_config(config_path=None):
     """Load application configuration from a TOML file."""
+    config_path = config_path or CONFIG_FILE
     with open(config_path, "rb") as config_file:
         return tomllib.load(config_file)
 
 
-def load_default_config():
+def load_default_config(config_path=None):
     """Load the default application configuration and report legacy INI migration issues."""
-    config_path = os.path.abspath(CONFIG_FILE)
+    config_path = os.path.abspath(config_path or CONFIG_FILE)
     legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
 
     if not os.path.exists(config_path):
@@ -104,7 +105,9 @@ def load_default_config():
                 "Missing config.toml. Found legacy config.ini; rewrite it into valid TOML "
                 "syntax and save it as config.toml."
             )
-        raise FileNotFoundError(f"Missing configuration file: {CONFIG_FILE}")
+        raise FileNotFoundError(
+            f"Missing configuration file: {os.path.basename(config_path)}"
+        )
 
     return load_config(config_path)
 
