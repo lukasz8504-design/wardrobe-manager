@@ -44,6 +44,8 @@ orange_threshold = 5
 red_threshold = 1
 ```
 
+Powyższy przykład pokazuje tylko fragment konfiguracji. Aplikacja wymaga wszystkich sekcji obecnych w dołączonym pliku `/home/runner/work/wardrobe-manager/wardrobe-manager/config.toml`.
+
 ### [WARDROBE]
 - `num_shelves` - Liczba półek w szafie (domyślnie 3)
 - `num_rows` - Liczba rzędów na jednej półce (domyślnie 1)

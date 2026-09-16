@@ -106,9 +106,8 @@ def load_default_config(config_path=None):
                 "Missing config.toml. Found legacy config.ini; rewrite it into valid TOML "
                 "syntax and save it as config.toml."
             )
-        raise FileNotFoundError(
-            f"Missing configuration file: {os.path.basename(config_path)}"
-        )
+        missing_path = CONFIG_FILE if using_default_path else config_path
+        raise FileNotFoundError(f"Missing configuration file: {missing_path}")
 
     return load_config(config_path)
 
