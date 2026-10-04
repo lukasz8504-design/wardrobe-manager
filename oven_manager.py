@@ -4,9 +4,11 @@ import json
 import os
 from datetime import datetime
 import re
+import sys
 from threading import Thread
 import time
 import winsound
+from pathlib import Path
 
 try:
     import tomllib
@@ -16,10 +18,19 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ uses tomllib
 
 HISTORY_TIMESTAMP_FORMAT = "%d-%m-%Y %H:%M:%S"
 OPERATOR_NUMBER_LENGTH = 4
-CONFIG_FILE = "config.toml"
-LEGACY_CONFIG_FILE = "config.ini"
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-TK_TCL_ERROR = getattr(tk, "TclError", None)
+
+
+class TomlConfig:
+    """Provide ConfigParser-like access to a parsed TOML configuration."""
+
+    def __init__(self, data):
+        self.data = data
+
+    def get(self, section, option, fallback=None):
+        return self.data.get(section, {}).get(option, fallback)
+
+    def getint(self, section, option):
+        return int(self.data[section][option])
 
 
 def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
@@ -35,17 +46,20 @@ def is_valid_operator_number(operator_number):
 
 def parse_history_line(line):
     """Parse a history line into its event data, or return None for old/invalid lines."""
+    operator_suffix = r"(?:,\s+Operator\s+#(?P<operator>[^,\r\n]+))?"
     move_pattern = (
         r"^\[(?P<timestamp>[^\]]+)\]\s+JIG\s+#(?P<jig>\d+)\s+~>\s+"
         r"(?:Shelf|Półka)\s+(?P<from_shelf>\d+),\s+(?:Row|Rząd)\s+(?P<from_row>\d+),\s+"
         r"(?:Column|Kolumna)\s+(?P<from_col>\d+),\s+(?:Position|Pozycja)\s+(?P<from_position>\d+)\s+"
         r"->\s+(?:Shelf|Półka)\s+(?P<to_shelf>\d+),\s+(?:Row|Rząd)\s+(?P<to_row>\d+),\s+"
         r"(?:Column|Kolumna)\s+(?P<to_col>\d+),\s+(?:Position|Pozycja)\s+(?P<to_position>\d+)"
+        + operator_suffix + r"$"
     )
     pattern = (
         r"^\[(?P<timestamp>[^\]]+)\]\s+JIG\s+#(?P<jig>\d+)\s+"
         r"(?P<action>->|<-)\s+(?:Shelf|Półka)\s+(?P<shelf>\d+),\s+(?:Row|Rząd)\s+(?P<row>\d+),\s+"
         r"(?:Column|Kolumna)\s+(?P<col>\d+),\s+(?:Position|Pozycja)\s+(?P<position>\d+)"
+        + operator_suffix + r"$"
     )
     line = line.strip()
     match = re.match(move_pattern, line)
@@ -66,6 +80,7 @@ def parse_history_line(line):
                 for name in ("to_shelf", "to_row", "to_col", "to_position")
             ),
             "action": "move",
+            "operator": match.group("operator"),
         }
 
     match = re.match(pattern, line)
@@ -85,156 +100,130 @@ def parse_history_line(line):
             int(match.group("position")) - 1,
         ),
         "action": "insert" if match.group("action") == "->" else "remove",
+        "operator": match.group("operator"),
     }
 
 
-def load_config(config_path=None):
-    """Load application configuration from a TOML file."""
-    config_path = (
-        os.path.join(APP_DIR, CONFIG_FILE)
-        if config_path is None else config_path
-    )
-    with open(config_path, "rb") as config_file:
-        return tomllib.load(config_file)
-
-
-def load_default_config(config_path=None):
-    """Load the default application configuration and report legacy INI migration issues."""
-    default_config_path = os.path.join(APP_DIR, CONFIG_FILE)
-    config_path = (
-        default_config_path
-        if config_path is None else (
-            config_path if os.path.isabs(config_path)
-            else os.path.join(APP_DIR, config_path)
-        )
-    )
-    legacy_config_path = os.path.join(os.path.dirname(config_path), LEGACY_CONFIG_FILE)
-    using_default_path = config_path == default_config_path
-
-    if not os.path.exists(config_path):
-        if using_default_path and os.path.exists(legacy_config_path):
-            raise FileNotFoundError(
-                "Missing config.toml. Found legacy config.ini; rewrite it into valid TOML "
-                "syntax and save it as config.toml."
-            )
-        missing_path = CONFIG_FILE if using_default_path else config_path
-        raise FileNotFoundError(f"Missing configuration file: {missing_path}")
-
-    return load_config(config_path)
-
-
-class WardrobeManager:
+class OvenManager:
     def __init__(self, root):
         self.root = root
-        self.root.title("Ocen Manager - Szafa")
-        
+        self.root.title("Oven Manager")
+
+        self.application_dir = Path(
+            sys.executable if getattr(sys, "frozen", False) else __file__
+        ).parent
+
         # Wczytanie konfiguracji
-        self.apply_config(load_default_config(), APP_DIR)
+        config_path = self.application_dir / 'config.toml'
+        with open(config_path, 'rb') as config_file:
+            self.config = TomlConfig(tomllib.load(config_file))
+        
+        # Parametry pieca
+        self.num_shelves = self.config.getint('OVEN', 'num_shelves')
+        self.num_rows = self.config.getint('OVEN', 'num_rows')
+        self.num_columns = self.config.getint('OVEN', 'num_columns')
+        self.jigs_per_section = self.config.getint('OVEN', 'jigs_per_section')
+        
+        # Parametry timera
+        self.initial_time = self.config.getint('TIMER', 'initial_time')
+        self.orange_threshold = self.config.getint('TIMER', 'orange_threshold')
+        self.red_threshold = self.config.getint('TIMER', 'red_threshold')
+        
+        # Kolory
+        self.normal_bg = self.config.get('COLORS', 'normal_bg')
+        self.orange_bg = self.config.get('COLORS', 'orange_bg')
+        self.red_bg = self.config.get('COLORS', 'red_bg')
+        self.normal_text = self.config.get('COLORS', 'normal_text')
+        self.orange_text = self.config.get('COLORS', 'orange_text')
+        self.red_text = self.config.get('COLORS', 'red_text')
+        self.empty_bg = self.config.get('COLORS', 'empty_bg')
+        self.empty_text = self.config.get('COLORS', 'empty_text')
+        self.blink_red_bg = self.config.get('COLORS', 'blink_red_bg')
+        self.blink_orange_bg = self.config.get('COLORS', 'blink_orange_bg')
+        self.blink_text = self.config.get('COLORS', 'blink_text')
+        self.app_bg = self.config.get('APPLICATION', 'background_color')
+        
+        # Wygląd
+        self.jig_width = self.config.getint('APPEARANCE', 'jig_width')
+        self.jig_height = self.config.getint('APPEARANCE', 'jig_height')
+        self.jig_font_size = self.config.getint('APPEARANCE', 'jig_font_size')
+        self.jig_number_color = self.config.get('JIG_DISPLAY', 'jig_number_color')
+        self.jig_number_font_size = self.config.getint('JIG_DISPLAY', 'jig_number_font_size')
+        self.remaining_time_color = self.config.get('JIG_DISPLAY', 'remaining_time_color')
+        self.remaining_time_font_size = self.config.getint('JIG_DISPLAY', 'remaining_time_font_size')
+        self.processing_text = self.config.get('JIG_DISPLAY', 'processing_text')
+        self.processing_text_color = self.config.get('JIG_DISPLAY', 'processing_text_color')
+        self.processing_text_font_size = self.config.getint('JIG_DISPLAY', 'processing_text_font_size')
+        self.not_removed_text = self.config.get('JIG_DISPLAY', 'not_removed_text')
+        self.not_removed_text_color = self.config.get('JIG_DISPLAY', 'not_removed_text_color')
+        self.not_removed_text_font_size = self.config.getint(
+            'JIG_DISPLAY', 'not_removed_text_font_size'
+        )
+        self.oven_name = self.config.get('OVEN_TITLE', 'text')
+        self.oven_name_color = self.config.get('OVEN_TITLE', 'color')
+        self.oven_name_font_size = self.config.getint('OVEN_TITLE', 'font_size')
+        self.shelf_names = [
+            self.config.get(
+                'SHELF_LABELS',
+                f'shelf_{shelf_number}',
+                fallback=f'SHELF {shelf_number}'
+            )
+            for shelf_number in range(1, self.num_shelves + 1)
+        ]
+        self.shelf_label_color = self.config.get('SHELF_LABELS', 'color')
+        self.shelf_label_font_size = self.config.getint('SHELF_LABELS', 'font_size')
+        self.near_expiry_seconds = self.config.getint('ALERTS', 'near_expiry_seconds')
+        self.blink_interval_ms = self.config.getint('ALERTS', 'blink_interval_ms')
+        self.empty_sound_file = self.config.get('SOUNDS', 'empty_sound_file')
+        self.occupied_sound_file = self.config.get('SOUNDS', 'occupied_sound_file')
+        self.expired_sound_file = self.config.get('SOUNDS', 'expired_sound_file')
+        
+        # Pliki
+        self.history_file = self.get_data_file_path('history_file')
+        self.state_file = self.get_data_file_path('state_file')
         
         # Maksymalizuj okno
-        state_method = getattr(self.root, "state", None)
-        if callable(state_method):
-            if TK_TCL_ERROR is None:
-                state_method('zoomed')  # Windows
-            else:
-                try:
-                    state_method('zoomed')  # Windows
-                except TK_TCL_ERROR:
-                    pass
+        self.root.state('zoomed')  # Windows
         self.root.resizable(True, True)
+        self.root.configure(bg=self.app_bg)
         
         # Stan timera - osobny timer dla każdego JIG
         self.jig_timers = {}  # {pos_key: remaining_time_in_seconds}
         self.jig_insertion_times = {}  # {pos_key: insertion_timestamp}
+        self.jig_operator_numbers = {}  # {pos_key: operator_number}
         self.timer_threads = {}  # {pos_key: thread}
         self.expired_jigs = set()
         self.warning_sound_played = set()
         self.blink_expired = False
         self.current_jig = None
+        self.current_operator_number = None
         
-        # Wczytanie stanu szafy
-        self.wardrobe_state = self.load_state()
+        # Wczytanie stanu pieca
+        self.oven_state = self.load_state()
         self.load_history()
         
         # GUI
         self.setup_ui()
         self.start_all_timers()
         self.schedule_expired_blink()
-
-    def apply_config(self, config, config_dir=None):
-        """Apply parsed configuration data to instance attributes."""
-        self.config = config
-        config_dir = config_dir or APP_DIR
-
-        # Parametry szafy
-        self.num_shelves = self.config['WARDROBE']['num_shelves']
-        self.num_rows = self.config['WARDROBE']['num_rows']
-        self.num_columns = self.config['WARDROBE']['num_columns']
-        self.squares_per_section = self.config['WARDROBE']['squares_per_section']
-
-        # Parametry timera
-        self.initial_time = self.config['TIMER']['initial_time']
-        self.orange_threshold = self.config['TIMER']['orange_threshold']
-        self.red_threshold = self.config['TIMER']['red_threshold']
-
-        # Kolory
-        self.normal_bg = self.config['COLORS']['normal_bg']
-        self.orange_bg = self.config['COLORS']['orange_bg']
-        self.red_bg = self.config['COLORS']['red_bg']
-        self.normal_text = self.config['COLORS']['normal_text']
-        self.orange_text = self.config['COLORS']['orange_text']
-        self.red_text = self.config['COLORS']['red_text']
-        self.empty_bg = self.config['COLORS']['empty_bg']
-        self.empty_text = self.config['COLORS']['empty_text']
-        self.blink_red_bg = self.config['COLORS']['blink_red_bg']
-        self.blink_orange_bg = self.config['COLORS']['blink_orange_bg']
-        self.blink_text = self.config['COLORS']['blink_text']
-
-        # Wygląd
-        self.jig_width = self.config['APPEARANCE']['square_width']
-        self.jig_height = self.config['APPEARANCE']['square_height']
-        self.jig_font_size = self.config['APPEARANCE']['square_font_size']
-        self.wardrobe_name = self.config['WARDROBE_TITLE']['text']
-        self.wardrobe_name_color = self.config['WARDROBE_TITLE']['color']
-        self.wardrobe_name_font_size = self.config['WARDROBE_TITLE']['font_size']
-        self.near_expiry_seconds = self.config['ALERTS']['near_expiry_seconds']
-        self.blink_interval_ms = self.config['ALERTS']['blink_interval_ms']
-        self.empty_sound_file = self.config['SOUNDS']['empty_sound_file']
-        self.occupied_sound_file = self.config['SOUNDS']['occupied_sound_file']
-        self.expired_sound_file = self.config['SOUNDS']['expired_sound_file']
-
-        # Pliki
-        self.history_file = self.resolve_config_path(
-            self.config['FILES']['history_file'], config_dir
-        )
-        self.state_file = self.resolve_config_path(
-            self.config['FILES']['state_file'], config_dir
-        )
-
-    @staticmethod
-    def resolve_config_path(path_value, config_dir):
-        """Resolve relative config file paths against the configuration directory."""
-        if os.path.isabs(path_value):
-            return path_value
-        return os.path.join(config_dir, path_value)
         
     def setup_ui(self):
         """Tworzenie interfejsu użytkownika"""
         # Główna ramka
-        main_frame = tk.Frame(self.root, bg='white')
+        main_frame = tk.Frame(self.root, bg=self.app_bg)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Górna część - Input
-        top_frame = tk.Frame(main_frame, bg='white')
+        top_frame = tk.Frame(main_frame, bg=self.app_bg)
         top_frame.pack(fill=tk.X, pady=10)
         
         # Input dla numeru JIG
-        tk.Label(top_frame, text="JIG number:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
+        tk.Label(top_frame, text="JIG number:", bg=self.app_bg, font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
         self.jig_entry = tk.Entry(top_frame, width=10, font=('Arial', 12))
         self.jig_entry.pack(side=tk.LEFT, padx=5)
         self.jig_entry.bind('<Return>', self.focus_operator_entry)
 
-        tk.Label(top_frame, text="Operator number:", bg='white', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
+        tk.Label(top_frame, text="Operator number:", bg=self.app_bg, font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=5)
         validate_operator_number = self.root.register(self.validate_operator_number_length)
         self.operator_entry = tk.Entry(
             top_frame,
@@ -247,7 +236,12 @@ class WardrobeManager:
         self.operator_entry.bind('<Return>', lambda e: self.input_jig())
 
         tk.Button(top_frame, text="Confirm", command=self.input_jig, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
-        tk.Button(top_frame, text="Clear all", command=self.clear_all, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            top_frame,
+            text="Clear fields",
+            command=self.clear_input_fields,
+            font=('Arial', 10)
+        ).pack(side=tk.LEFT, padx=5)
         
         # Status
         self.status_label = tk.Label(top_frame, text="Waiting for JIG number...", 
@@ -255,15 +249,15 @@ class WardrobeManager:
         self.status_label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
         
         # Środkowa część - Półki bez scrollbara
-        shelves_frame = tk.Frame(main_frame, bg='white')
+        shelves_frame = tk.Frame(main_frame, bg=self.app_bg)
         shelves_frame.pack(fill=tk.BOTH, expand=True)
 
         tk.Label(
             shelves_frame,
-            text=self.wardrobe_name,
-            bg='white',
-            fg=self.wardrobe_name_color,
-            font=('Arial', self.wardrobe_name_font_size, 'bold')
+            text=self.oven_name,
+            bg=self.app_bg,
+            fg=self.oven_name_color,
+            font=('Arial', self.oven_name_font_size, 'bold')
         ).pack(pady=(0, 10))
 
         self.shelf_buttons = {}
@@ -271,9 +265,10 @@ class WardrobeManager:
         for shelf_idx in range(self.num_shelves):
             shelf_label = tk.Label(
                 shelves_frame,
-                text=f"Shelf {shelf_idx + 1}",
-                bg='white',
-                font=('Arial', 10, 'bold')
+                text=self.shelf_names[shelf_idx],
+                bg=self.app_bg,
+                fg=self.shelf_label_color,
+                font=('Arial', self.shelf_label_font_size, 'bold')
             )
             shelf_label.pack(pady=5)
             
@@ -291,30 +286,48 @@ class WardrobeManager:
                     section_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
                     
                     # JIG ustawione pionowo (jeden nad drugim)
-                    for jig_idx in range(self.squares_per_section):
-                        jig_btn = tk.Button(
-                            section_frame, 
-                            text="", 
-                            font=('Arial', self.jig_font_size, 'bold'),
-                            bg='white', 
-                            relief=tk.RAISED, 
+                    for jig_idx in range(self.jigs_per_section):
+                        jig_frame = tk.Frame(
+                            section_frame,
+                            bg=self.empty_bg,
+                            relief=tk.RAISED,
                             bd=2,
-                            width=self.jig_width,
-                            height=self.jig_height,
-                            command=lambda s=shelf_idx, r=row_idx, c=col_idx, j=jig_idx: 
+                        )
+                        jig_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+                        number_label = tk.Label(
+                            jig_frame, bg=self.empty_bg, width=self.jig_width
+                        )
+                        processing_label = tk.Label(jig_frame, bg=self.empty_bg)
+                        time_label = tk.Label(jig_frame, bg=self.empty_bg)
+                        status_label = tk.Label(jig_frame, bg=self.empty_bg)
+                        for label in (number_label, processing_label, time_label, status_label):
+                            label.pack(fill=tk.X)
+                        callback = lambda event, s=shelf_idx, r=row_idx, c=col_idx, j=jig_idx: (
                             self.select_position(s, r, c, j)
                         )
-                        
-                        jig_btn.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-                        
+                        for widget in (
+                            jig_frame, number_label, processing_label, time_label, status_label
+                        ):
+                            widget.bind('<Button-1>', callback)
                         pos_key = (shelf_idx, row_idx, col_idx, jig_idx)
-                        self.shelf_buttons[pos_key] = jig_btn
+                        self.shelf_buttons[pos_key] = {
+                            "frame": jig_frame,
+                            "number": number_label,
+                            "processing": processing_label,
+                            "time": time_label,
+                            "status": status_label,
+                        }
         
         self.update_display()
 
     def validate_operator_number_length(self, value):
         """Prevent entering more than the required number of operator characters."""
         return len(value) <= OPERATOR_NUMBER_LENGTH
+
+    def get_data_file_path(self, option):
+        """Return a configured data-file path relative to the application directory."""
+        path = Path(self.config.get('FILES', option))
+        return str(path if path.is_absolute() else self.application_dir / path)
 
     def focus_operator_entry(self, event=None):
         """Move to the operator-number field after confirming a JIG number."""
@@ -339,6 +352,7 @@ class WardrobeManager:
                 return
             
             self.current_jig = jig_num
+            self.current_operator_number = operator_number
             self.jig_entry.delete(0, tk.END)
             self.operator_entry.delete(0, tk.END)
             imminent_positions = self.get_imminent_expiry_positions()
@@ -360,13 +374,20 @@ class WardrobeManager:
         pos_key = (shelf, row, col, jig)
 
         # Expired JIGs can be removed without entering a new JIG number.
-        if pos_key in self.wardrobe_state and pos_key in self.expired_jigs:
+        if pos_key in self.oven_state and pos_key in self.expired_jigs:
             self.save_to_history(
-                self.wardrobe_state[pos_key], shelf, row, col, jig, action="remove"
+                self.oven_state[pos_key],
+                shelf,
+                row,
+                col,
+                jig,
+                action="remove",
+                operator_number=self.jig_operator_numbers.get(pos_key),
             )
-            del self.wardrobe_state[pos_key]
+            del self.oven_state[pos_key]
             self.jig_timers.pop(pos_key, None)
             self.jig_insertion_times.pop(pos_key, None)
+            self.jig_operator_numbers.pop(pos_key, None)
             self.timer_threads.pop(pos_key, None)
             self.expired_jigs.discard(pos_key)
             self.play_sound(self.empty_sound_file)
@@ -383,50 +404,57 @@ class WardrobeManager:
             return
 
         if col == 0 and self.has_jig_in_next_column(shelf, row, jig):
-            if messagebox.askyesno(
+            moved_jig = messagebox.askyesno(
                 "JIG move",
                 "Was the JIG from column 2 moved to column 1, with the new JIG "
                 "inserted in column 2?"
-            ):
-                self.move_jig_to_previous_column(shelf, row, jig)
-                pos_key = (shelf, row, 1, jig)
-        
-        # Jeśli pozycja jest już zajęta, usuń poprzedni JIG
-        if pos_key in self.wardrobe_state:
-            self.save_to_history(
-                self.wardrobe_state[pos_key], shelf, row, col, jig, action="remove"
             )
-            del self.wardrobe_state[pos_key]
-            # Zatrzymaj timer dla tego JIG
-            if pos_key in self.jig_timers:
-                del self.jig_timers[pos_key]
-            if pos_key in self.jig_insertion_times:
-                del self.jig_insertion_times[pos_key]
-            if pos_key in self.timer_threads:
-                del self.timer_threads[pos_key]
-            self.expired_jigs.discard(pos_key)
-            self.play_sound(self.empty_sound_file)
-            self.warning_sound_played.discard(pos_key)
-        else:
-            # Dodaj nowy JIG
-            self.wardrobe_state[pos_key] = self.current_jig
-            
-            # Inicjalizuj timer dla tego JIG
-            self.jig_timers[pos_key] = self.initial_time * 60
-            
-            # Zapisz czas włożenia JIG
-            self.jig_insertion_times[pos_key] = datetime.now()
-            
-            # Zapisz do historii
-            self.save_to_history(self.current_jig, shelf, row, col, jig, action="insert")
-            
-            # Uruchom timer dla tego JIG
-            self.start_jig_timer(pos_key)
+            if not moved_jig:
+                self.status_label.config(
+                    text="JIG insertion cancelled. Confirm the physical move first.",
+                    bg='lightyellow'
+                )
+                return
+            self.move_jig_to_previous_column(shelf, row, jig)
+            pos_key = (shelf, row, 1, jig)
+
+        if pos_key in self.oven_state:
+            messagebox.showwarning(
+                "Position occupied",
+                "Remove the JIG from this position before inserting a new one."
+            )
+            return
+
+        # Dodaj nowy JIG
+        self.oven_state[pos_key] = self.current_jig
+
+        # Inicjalizuj timer dla tego JIG
+        self.jig_timers[pos_key] = self.initial_time * 60
+
+        # Zapisz czas włożenia JIG
+        self.jig_insertion_times[pos_key] = datetime.now()
+        self.jig_operator_numbers[pos_key] = self.current_operator_number
+
+        # Zapisz do historii
+        self.save_to_history(
+            self.current_jig,
+            pos_key[0],
+            pos_key[1],
+            pos_key[2],
+            pos_key[3],
+            action="insert",
+            operator_number=self.current_operator_number,
+        )
+
+        # Uruchom timer dla tego JIG
+        self.start_jig_timer(pos_key)
         
         self.save_state()
         self.update_display()
         self.current_jig = None
+        self.current_operator_number = None
         self.status_label.config(text="Position updated. Enter the next JIG.", bg='lightgreen')
+        self.jig_entry.focus_set()
 
     def get_imminent_expiry_positions(self):
         """Return descriptions of occupied positions that are near expiry."""
@@ -441,17 +469,18 @@ class WardrobeManager:
 
     def has_jig_in_next_column(self, shelf, row, jig):
         """Return whether the matching position in column 2 is occupied."""
-        return (shelf, row, 1, jig) in self.wardrobe_state
+        return (shelf, row, 1, jig) in self.oven_state
 
     def move_jig_to_previous_column(self, shelf, row, jig):
         """Move a JIG from column 2 to column 1 without resetting its timer."""
         source = (shelf, row, 1, jig)
         destination = (shelf, row, 0, jig)
-        jig_num = self.wardrobe_state.pop(source)
-        self.wardrobe_state[destination] = jig_num
+        jig_num = self.oven_state.pop(source)
+        self.oven_state[destination] = jig_num
         for collection in (
             self.jig_timers,
             self.jig_insertion_times,
+            self.jig_operator_numbers,
             self.timer_threads,
         ):
             if source in collection:
@@ -462,7 +491,9 @@ class WardrobeManager:
         if source in self.warning_sound_played:
             self.warning_sound_played.remove(source)
             self.warning_sound_played.add(destination)
-        self.save_move_to_history(jig_num, source, destination)
+        self.save_move_to_history(
+            jig_num, source, destination, self.jig_operator_numbers.get(destination)
+        )
     
     def start_jig_timer(self, pos_key):
         """Uruchomienie timera dla konkretnego JIG"""
@@ -500,7 +531,7 @@ class WardrobeManager:
     def start_all_timers(self, current_time=None):
         """Uruchomienie wszystkich timerów dla JIG z poprzedniej sesji"""
         current_time = current_time or datetime.now()
-        for pos_key in list(self.wardrobe_state):
+        for pos_key in list(self.oven_state):
             insertion_time = self.jig_insertion_times.get(pos_key)
             if insertion_time is None:
                 self.jig_timers[pos_key] = self.initial_time * 60
@@ -524,8 +555,12 @@ class WardrobeManager:
 
     def play_sound(self, sound_file):
         """Play a configured WAV file when its path is provided."""
-        if sound_file and os.path.isfile(sound_file):
-            winsound.PlaySound(sound_file, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        if not sound_file:
+            return
+        path = Path(sound_file)
+        sound_path = path if path.is_absolute() else self.application_dir / path
+        if sound_path.is_file():
+            winsound.PlaySound(str(sound_path), winsound.SND_FILENAME | winsound.SND_ASYNC)
     
     def get_color_for_time(self, remaining_seconds):
         """Zwraca kolory na podstawie pozostałego czasu"""
@@ -547,48 +582,65 @@ class WardrobeManager:
     def update_display(self):
         """Aktualizacja wyświetlania przycisków"""
         for pos_key, btn in self.shelf_buttons.items():
-            if pos_key in self.wardrobe_state:
-                jig_num = self.wardrobe_state[pos_key]
+            if pos_key in self.oven_state:
+                jig_num = self.oven_state[pos_key]
                 remaining_time = self.jig_timers.get(pos_key, self.initial_time * 60)
                 time_str = self.format_time(remaining_time)
                 if pos_key in self.expired_jigs:
-                    time_str += "\nNOT REMOVED"
                     bg_color = (
                         self.blink_red_bg if self.blink_expired else self.blink_orange_bg
                     )
-                    text_color = self.blink_text
+                    status_text = self.not_removed_text
                 else:
                     bg_color, text_color = self.get_color_for_time(remaining_time)
-                
-                btn.config(
-                    text=f"#{jig_num}\n{time_str}", 
-                    bg=bg_color, 
-                    fg=text_color
+                    status_text = ""
+                display = self.shelf_buttons[pos_key]
+                display["frame"].config(bg=bg_color)
+                display["number"].config(
+                    text=f"#{jig_num}",
+                    bg=bg_color,
+                    fg=self.jig_number_color,
+                    font=('Arial', self.jig_number_font_size, 'bold')
+                )
+                display["processing"].config(
+                    text=self.processing_text,
+                    bg=bg_color,
+                    fg=self.processing_text_color,
+                    font=('Arial', self.processing_text_font_size)
+                )
+                display["time"].config(
+                    text=time_str,
+                    bg=bg_color,
+                    fg=self.remaining_time_color,
+                    font=('Arial', self.remaining_time_font_size, 'bold')
+                )
+                display["status"].config(
+                    text=status_text,
+                    bg=bg_color,
+                    fg=self.not_removed_text_color,
+                    font=('Arial', self.not_removed_text_font_size, 'bold')
                 )
             else:
-                btn.config(text="", bg=self.empty_bg, fg=self.empty_text)
+                display = self.shelf_buttons[pos_key]
+                display["frame"].config(bg=self.empty_bg)
+                for label in display.values():
+                    if label is not display["frame"]:
+                        label.config(text="", bg=self.empty_bg, fg=self.empty_text)
     
-    def clear_all(self):
-        """Czyszczenie wszystkiego"""
-        for pos_key, jig_num in list(self.wardrobe_state.items()):
-            self.save_to_history(
-                jig_num, pos_key[0], pos_key[1], pos_key[2], pos_key[3], action="remove"
-            )
-            self.play_sound(self.empty_sound_file)
-        self.jig_timers.clear()
-        self.jig_insertion_times.clear()
-        self.timer_threads.clear()
+    def clear_input_fields(self):
+        """Clear the JIG and operator input fields without changing the oven."""
         self.current_jig = None
-        self.wardrobe_state.clear()
-        self.expired_jigs.clear()
-        self.warning_sound_played.clear()
-        self.save_state()
-        self.update_display()
-        self.status_label.config(text="Clearing complete. Ready for a new number.", bg='lightyellow')
+        self.current_operator_number = None
+        self.status_label.config(
+            text="Fields cleared. Ready for a new JIG number.",
+            bg='lightyellow'
+        )
         self.jig_entry.delete(0, tk.END)
         self.operator_entry.delete(0, tk.END)
     
-    def save_to_history(self, jig_num, shelf, row, col, jig_idx, action="insert"):
+    def save_to_history(
+        self, jig_num, shelf, row, col, jig_idx, action="insert", operator_number=None
+    ):
         """Zapis do pliku historii"""
         now = datetime.now()
         timestamp = now.strftime(HISTORY_TIMESTAMP_FORMAT)
@@ -596,13 +648,16 @@ class WardrobeManager:
         
         history_entry = (
             f"[{timestamp}] JIG #{jig_num} {marker} Shelf {shelf + 1}, "
-            f"Row {row + 1}, Column {col + 1}, Position {jig_idx + 1}\n"
+            f"Row {row + 1}, Column {col + 1}, Position {jig_idx + 1}"
         )
+        if operator_number:
+            history_entry += f", Operator #{operator_number}"
+        history_entry += "\n"
         
         with open(self.history_file, 'a', encoding='utf-8') as f:
             f.write(history_entry)
 
-    def save_move_to_history(self, jig_num, source, destination):
+    def save_move_to_history(self, jig_num, source, destination, operator_number=None):
         """Record a position change without treating the JIG as newly inserted."""
         timestamp = datetime.now().strftime(HISTORY_TIMESTAMP_FORMAT)
         source_text = (
@@ -614,32 +669,37 @@ class WardrobeManager:
             f"Column {destination[2] + 1}, Position {destination[3] + 1}"
         )
         with open(self.history_file, 'a', encoding='utf-8') as history:
-            history.write(
-                f"[{timestamp}] JIG #{jig_num} ~> {source_text} -> {destination_text}\n"
-            )
+            entry = f"[{timestamp}] JIG #{jig_num} ~> {source_text} -> {destination_text}"
+            if operator_number:
+                entry += f", Operator #{operator_number}"
+            history.write(entry + "\n")
     
     def save_state(self):
-        """Zapis stanu szafy do JSON"""
+        """Zapis stanu pieca do JSON"""
         state_dict = {}
         timers_dict = {}
         insertion_times_dict = {}
+        operator_numbers_dict = {}
         
-        for pos, jig_num in self.wardrobe_state.items():
+        for pos, jig_num in self.oven_state.items():
             state_dict[str(pos)] = jig_num
             if pos in self.jig_timers:
                 timers_dict[str(pos)] = self.jig_timers[pos]
             if pos in self.jig_insertion_times:
                 insertion_times_dict[str(pos)] = self.jig_insertion_times[pos].isoformat()
+            if pos in self.jig_operator_numbers:
+                operator_numbers_dict[str(pos)] = self.jig_operator_numbers[pos]
         
         with open(self.state_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "state": state_dict, 
                 "timers": timers_dict,
-                "insertion_times": insertion_times_dict
+                "insertion_times": insertion_times_dict,
+                "operator_numbers": operator_numbers_dict,
             }, f, indent=2)
     
     def load_state(self):
-        """Wczytanie stanu szafy z JSON"""
+        """Wczytanie stanu pieca z JSON"""
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file, 'r', encoding='utf-8') as f:
@@ -647,6 +707,7 @@ class WardrobeManager:
                     state_dict = data.get("state", {})
                     timers_dict = data.get("timers", {})
                     insertion_times_dict = data.get("insertion_times", {})
+                    operator_numbers_dict = data.get("operator_numbers", {})
                     
                     state = {}
                     for pos_str, jig_num in state_dict.items():
@@ -665,6 +726,8 @@ class WardrobeManager:
                                 self.jig_insertion_times[pos] = datetime.fromisoformat(insertion_times_dict[pos_str])
                             except:
                                 self.jig_insertion_times[pos] = datetime.now()
+                        if pos_str in operator_numbers_dict:
+                            self.jig_operator_numbers[pos] = operator_numbers_dict[pos_str]
                     
                     return state
             except:
@@ -674,9 +737,10 @@ class WardrobeManager:
     def load_history(self):
         """Restore active insertion timestamps and apply recorded removals."""
         # No history means there are no JIGs to restore from a previous session.
-        self.wardrobe_state.clear()
+        self.oven_state.clear()
         self.jig_timers.clear()
         self.jig_insertion_times.clear()
+        self.jig_operator_numbers.clear()
         self.expired_jigs.clear()
 
         if not os.path.exists(self.history_file):
@@ -692,20 +756,27 @@ class WardrobeManager:
                 continue
             pos_key = event["position"]
             if event["action"] == "remove":
-                self.wardrobe_state.pop(pos_key, None)
+                self.oven_state.pop(pos_key, None)
                 self.jig_timers.pop(pos_key, None)
                 self.jig_insertion_times.pop(pos_key, None)
+                self.jig_operator_numbers.pop(pos_key, None)
                 self.expired_jigs.discard(pos_key)
             elif event["action"] == "move":
                 source = event["from_position"]
-                if source in self.wardrobe_state:
-                    self.wardrobe_state[pos_key] = self.wardrobe_state.pop(source)
+                if source in self.oven_state:
+                    self.oven_state[pos_key] = self.oven_state.pop(source)
                     self.jig_insertion_times[pos_key] = self.jig_insertion_times.pop(source)
+                    if source in self.jig_operator_numbers:
+                        self.jig_operator_numbers[pos_key] = self.jig_operator_numbers.pop(source)
+                    elif event["operator"]:
+                        self.jig_operator_numbers[pos_key] = event["operator"]
             else:
-                self.wardrobe_state[pos_key] = event["jig"]
+                self.oven_state[pos_key] = event["jig"]
                 self.jig_insertion_times[pos_key] = event["timestamp"]
+                if event["operator"]:
+                    self.jig_operator_numbers[pos_key] = event["operator"]
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = WardrobeManager(root)
+    app = OvenManager(root)
     root.mainloop()

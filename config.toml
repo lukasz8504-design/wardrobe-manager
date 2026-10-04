@@ -1,15 +1,15 @@
-[WARDROBE]
-# Liczba półek w szafie
+[OVEN]
+# Liczba półek w piecu
 num_shelves = 3
 
-# Liczba wierszy (rzędów) na jednej półce
+# Liczba rzędów na jednej półce
 num_rows = 1
 
 # Liczba kolumn na jednej półce
 num_columns = 3
 
-# Liczba pozycji JIG w każdej sekcji (2 - jeden nad drugim)
-squares_per_section = 2
+# Liczba pozycji JIG w każdej sekcji
+jigs_per_section = 2
 
 [TIMER]
 # Czas początkowy w minutach
@@ -49,19 +49,42 @@ blink_red_bg = "#FF0000"
 blink_orange_bg = "#FFA500"
 blink_text = "#FFFFFF"
 
+[APPLICATION]
+# Kolor tła całego okna aplikacji
+background_color = "#FFFFFF"
+
 [APPEARANCE]
-# Rozmiar przycisku kwadratu (szerokość w znakach)
-square_width = 8
+# Szerokość przycisku JIG w znakach
+jig_width = 8
 
-# Rozmiar przycisku kwadratu (wysokość w linijkach)
-square_height = 2
+# Wysokość przycisku JIG w liniach
+jig_height = 2
 
-# Rozmiar czcionki dla numerów kwadratów
-square_font_size = 10
+# Domyślny rozmiar czcionki JIG
+jig_font_size = 10
 
-[WARDROBE_TITLE]
+[JIG_DISPLAY]
+jig_number_color = "#000000"
+jig_number_font_size = 10
+remaining_time_color = "#000000"
+remaining_time_font_size = 10
+processing_text = "W trakcie wygrzewania"
+processing_text_color = "#000000"
+processing_text_font_size = 8
+not_removed_text = "NOT REMOVED"
+not_removed_text_color = "#FFFFFF"
+not_removed_text_font_size = 8
+
+[OVEN_TITLE]
 # Nazwa wyświetlana nad wszystkimi półkami
 text = "DRY-001"
+color = "#000000"
+font_size = 10
+
+[SHELF_LABELS]
+shelf_1 = "SHELF 1"
+shelf_2 = "SHELF 2"
+shelf_3 = "SHELF 3"
 color = "#000000"
 font_size = 10
 
@@ -82,5 +105,5 @@ expired_sound_file = ""
 # Ścieżka do pliku historii
 history_file = "history.txt"
 
-# Ścieżka do pliku danych o stanie szafy
-state_file = "wardrobe_state.json"
+# Ścieżka do pliku danych o stanie pieca
+state_file = "oven_state.json"

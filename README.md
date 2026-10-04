@@ -1,4 +1,4 @@
-# Ocen Manager - Aplikacja do zarządzania szafą
+# Oven Manager - Aplikacja do zarządzania piecem
 
 Aplikacja do zarządzania szafą z systemem timerów dla każdego JIG i historią wprowadzanych danych.
 
@@ -15,7 +15,7 @@ Aplikacja do zarządzania szafą z systemem timerów dla każdego JIG i histori�
 2. Otwórz terminal w folderze aplikacji
 3. Uruchom aplikację:
 ```bash
-python wardrobe_manager.py
+python oven_manager.py
 ```
 
 ### macOS / Linux
@@ -24,33 +24,18 @@ python wardrobe_manager.py
 2. Otwórz terminal w folderze aplikacji
 3. Uruchom aplikację:
 ```bash
-python3 wardrobe_manager.py
+python3 oven_manager.py
 ```
 
 ## Konfiguracja
 
-Wszystkie ustawienia znajdują się w pliku `config.toml`:
-
-```toml
-[WARDROBE]
-num_shelves = 3
-num_rows = 1
-num_columns = 3
-squares_per_section = 2
-
-[TIMER]
-initial_time = 100
-orange_threshold = 5
-red_threshold = 1
-```
-
-Powyższy przykład pokazuje tylko fragment konfiguracji. Aplikacja wymaga wszystkich sekcji obecnych w dołączonym pliku `config.toml`.
+Wszystkie ustawienia znajdują się w pliku `config.ini`:
 
 ### [WARDROBE]
 - `num_shelves` - Liczba półek w szafie (domyślnie 3)
-- `num_rows` - Liczba rzędów na jednej półce (domyślnie 1)
-- `num_columns` - Liczba kolumn na półce (domyślnie 3)
-- `squares_per_section` - Liczba pozycji JIG w każdej sekcji (domyślnie 2 - jeden nad drugim)
+- `num_rows` - Liczba rzędów na jednej półce (domyślnie 3)
+- `num_columns` - Liczba kolumn (zawsze 1 - JIG są ustawione jeden nad drugim)
+- `jigs_per_section` - Liczba JIG w każdej pozycji (domyślnie 2 - jeden za drugim)
 
 ### [TIMER]
 - `initial_time` - Czas początkowy w minutach (domyślnie 100)
@@ -59,30 +44,22 @@ Powyższy przykład pokazuje tylko fragment konfiguracji. Aplikacja wymaga wszys
 
 ### [COLORS]
 - Kolory tła i tekstu dla różnych stanów timera
-- Format RGB (hex): `#RRGGBB`
+- Format RGB (hex): #RRGGBB
 
 ### [FILES]
 - `history_file` - Ścieżka do pliku historii (domyślnie `history.txt`)
-- `state_file` - Ścieżka do pliku stanu szafy (domyślnie `wardrobe_state.json`)
+- `state_file` - Ścieżka do pliku stanu pieca (domyślnie `oven_state.json`)
 
 ### [APPEARANCE]
-- `square_width` - Szerokość JIG w znakach (domyślnie 8)
-- `square_height` - Wysokość JIG w linijkach (domyślnie 2)
-- `square_font_size` - Rozmiar czcionki dla numerów JIG (domyślnie 10)
+- `jig_width` - Szerokość JIG w znakach (domyślnie 8)
+- `jig_height` - Wysokość JIG w linijkach (domyślnie 2)
+- `jig_font_size` - Rozmiar czcionki dla numerów JIG (domyślnie 10)
 
-### [WARDROBE_TITLE]
-- `text` - Nazwa wyświetlana nad półkami (domyślnie `DRY-001`)
-- `color` - Kolor tytułu w formacie `#RRGGBB`
-- `font_size` - Rozmiar czcionki tytułu
-
-### [ALERTS]
-- `near_expiry_seconds` - Próg ostrzeżenia przy dodawaniu nowego JIG-a
-- `blink_interval_ms` - Interwał migania dla przeterminowanego JIG-a
-
-### [SOUNDS]
-- `empty_sound_file` - Dźwięk przy opróżnieniu pozycji
-- `occupied_sound_file` - Dźwięk przy zajęciu pozycji
-- `expired_sound_file` - Dźwięk dla wygasłego JIG-a
+### [JIG_DISPLAY]
+- `jig_number_color`, `jig_number_font_size` - Kolor i rozmiar numeru JIG.
+- `remaining_time_color`, `remaining_time_font_size` - Kolor i rozmiar pozostałego czasu.
+- `processing_text`, `processing_text_color`, `processing_text_font_size` - Tekst procesu, np. `W trakcie wygrzewania`, oraz jego wygląd.
+- `not_removed_text`, `not_removed_text_color`, `not_removed_text_font_size` - Tekst wygasłego JIG-a oraz jego wygląd.
 
 ## Użytkowanie
 
@@ -91,6 +68,7 @@ Powyższy przykład pokazuje tylko fragment konfiguracji. Aplikacja wymaga wszys
 3. **Timer** automatycznie uruchomi się dla każdego JIG osobno - liczby od 100 minut do 0
 4. **Każdy JIG wyświetla**:
    - Numer JIG
+   - Konfigurowalny komunikat procesu
    - Pozostały czas (MM:SS)
    - Kolor zmieniający się na podstawie czasu:
      - Szary (normalny) - gdy pozostało więcej niż 5 minut
@@ -98,7 +76,7 @@ Powyższy przykład pokazuje tylko fragment konfiguracji. Aplikacja wymaga wszys
      - Czerwony - gdy pozostało od 1 minuty do 0
 
 5. **Historia** wszystkich operacji jest zapisywana w pliku `history.txt` ze znacznikami czasowymi. `->` oznacza włożenie, a `<-` wyjęcie JIG-a.
-6. **Stan szafy** jest zapisywany w pliku `wardrobe_state.json` wraz z czasami dla każdego JIG i przywracany przy restarcie aplikacji
+6. **Stan pieca** jest zapisywany w pliku `oven_state.json` wraz z czasami dla każdego JIG i przywracany przy restarcie aplikacji
 7. **Porównanie czasów** - Przy restarcie aplikacji system odczytuje ostatnie zdarzenie z historii, porównuje czas włożenia z aktualnym czasem i automatycznie oblicza pozostały czas dla każdego JIG. Po upływie `initial_time` JIG pozostaje widoczny jako `NIE WYJĘTY`, dopóki nie zostanie ręcznie wyjęty.
 
 ## Nowe cechy aplikacji (v3)
@@ -110,30 +88,21 @@ Powyższy przykład pokazuje tylko fragment konfiguracji. Aplikacja wymaga wszys
 ✅ **Wyświetlanie czasu na każdym JIG** - Timer widoczny bezpośrednio na każdej pozycji z kolorystką  
 ✅ **Zmniejszony rozmiar JIG** - Wszystkie półki widoczne bez konieczności scrollowania  
 ✅ **Porównanie czasów przy restarcie** - System automatycznie oblicza pozostały czas dla każdego JIG na podstawie czasu włożenia  
-✅ **Terminologia JIG** - Całe słowo "kwadrat" zastąpione terminem "JIG"
+✅ **Terminologia JIG** - Wszystkie pozycje są określane jako JIG
 
 ## Pliki
 
-- `wardrobe_manager.py` - Główny plik aplikacji
-- `config.toml` - Plik konfiguracyjny
+- `oven_manager.py` - Główny plik aplikacji
+- `config.ini` - Plik konfiguracyjny
 - `history.txt` - Historia wprowadzonych JIG (tworzona automatycznie)
-- `wardrobe_state.json` - Stan obecny szafy z timerami i czasami włożenia JIG (tworzony automatycznie)
+- `oven_state.json` - Stan obecny pieca z timerami i czasami włożenia JIG (tworzony automatycznie)
 - `README.md` - Ten plik
-
-## Migracja z INI do TOML
-
-Jeśli używasz starego `config.ini`, użyj dołączonego `config.toml` jako wzorca. Nie wystarczy samo przemianowanie pliku — najpierw trzeba przepisać stare wartości do poprawnej składni TOML w strukturze nowego `config.toml`:
-
-- sekcje `[SEKCJA]` pozostają bez zmian,
-- liczby zapisuj bez cudzysłowów, np. `initial_time = 100`,
-- tekst i ścieżki zapisuj w cudzysłowach, np. `history_file = "history.txt"`,
-- kolory hex również zapisuj jako tekst, np. `normal_bg = "#f0f0f0"`.
 
 ## Uwagi
 
 - Kliknięcie na zajętą pozycję usuwa JIG z tej pozycji (i zatrzymuje jego timer)
-- Aplikacja automatycznie zapisuje historię i stan szafy (razem z timerami dla każdego JIG)
-- Stan szafy i czasy są przywracane przy każdym uruchomieniu aplikacji z uwzględnieniem upływu czasu
+- Aplikacja automatycznie zapisuje historię i stan pieca (razem z timerami dla każdego JIG)
+- Stan pieca i czasy są przywracane przy każdym uruchomieniu aplikacji z uwzględnieniem upływu czasu
 - Wszystkie czasy są w formacie MM:SS (minuty:sekundy)
 - Jeśli aplikacja zostanie zamknięta i ponownie uruchomiona, system automatycznie obliczy jak dużo czasu upłynęło i dostosuje timery JIG
 
