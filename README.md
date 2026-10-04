@@ -29,13 +29,13 @@ python3 oven_manager.py
 
 ## Konfiguracja
 
-Wszystkie ustawienia znajdują się w pliku `config.ini`:
+Wszystkie ustawienia znajdują się w pliku `config.toml`:
 
-### [WARDROBE]
-- `num_shelves` - Liczba półek w szafie (domyślnie 3)
-- `num_rows` - Liczba rzędów na jednej półce (domyślnie 3)
-- `num_columns` - Liczba kolumn (zawsze 1 - JIG są ustawione jeden nad drugim)
-- `jigs_per_section` - Liczba JIG w każdej pozycji (domyślnie 2 - jeden za drugim)
+### [OVEN]
+- `num_shelves` - Liczba półek w piecu (domyślnie 3)
+- `num_rows` - Liczba rzędów na jednej półce (domyślnie 1)
+- `num_columns` - Liczba kolumn na półce (domyślnie 3)
+- `jigs_per_section` - Liczba JIG w każdej sekcji (domyślnie 2 - jeden nad drugim)
 
 ### [TIMER]
 - `initial_time` - Czas początkowy w minutach (domyślnie 100)
@@ -60,6 +60,11 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 - `remaining_time_color`, `remaining_time_font_size` - Kolor i rozmiar pozostałego czasu.
 - `processing_text`, `processing_text_color`, `processing_text_font_size` - Tekst procesu, np. `W trakcie wygrzewania`, oraz jego wygląd.
 - `not_removed_text`, `not_removed_text_color`, `not_removed_text_font_size` - Tekst wygasłego JIG-a oraz jego wygląd.
+
+### [OVEN_TITLE] i [SHELF_LABELS]
+- `text`, `color`, `font_size` - Nazwa pieca nad wszystkimi półkami oraz jej wygląd.
+- `shelf_1`, `shelf_2`, ... - Indywidualne nazwy półek.
+- `color`, `font_size` w `[SHELF_LABELS]` - Wspólny kolor i rozmiar czcionki nazw półek.
 
 ## Użytkowanie
 
@@ -93,14 +98,14 @@ Wszystkie ustawienia znajdują się w pliku `config.ini`:
 ## Pliki
 
 - `oven_manager.py` - Główny plik aplikacji
-- `config.ini` - Plik konfiguracyjny
+- `config.toml` - Plik konfiguracyjny
 - `history.txt` - Historia wprowadzonych JIG (tworzona automatycznie)
 - `oven_state.json` - Stan obecny pieca z timerami i czasami włożenia JIG (tworzony automatycznie)
 - `README.md` - Ten plik
 
 ## Uwagi
 
-- Kliknięcie na zajętą pozycję usuwa JIG z tej pozycji (i zatrzymuje jego timer)
+- Nie można włożyć JIG-a na zajętą pozycję; wyjątkiem jest potwierdzone przesunięcie JIG-a z kolumny 2 do kolumny 1.
 - Aplikacja automatycznie zapisuje historię i stan pieca (razem z timerami dla każdego JIG)
 - Stan pieca i czasy są przywracane przy każdym uruchomieniu aplikacji z uwzględnieniem upływu czasu
 - Wszystkie czasy są w formacie MM:SS (minuty:sekundy)
