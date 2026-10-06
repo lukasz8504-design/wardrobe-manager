@@ -251,6 +251,7 @@ class OvenManager:
         # Środkowa część - Półki bez scrollbara
         shelves_frame = tk.Frame(main_frame, bg=self.app_bg)
         shelves_frame.pack(fill=tk.BOTH, expand=True)
+        shelves_frame.columnconfigure(0, weight=1)
 
         tk.Label(
             shelves_frame,
@@ -258,11 +259,13 @@ class OvenManager:
             bg=self.app_bg,
             fg=self.oven_name_color,
             font=('Arial', self.oven_name_font_size, 'bold')
-        ).pack(pady=(0, 10))
+        ).grid(row=0, column=0, pady=(0, 10), sticky='ew')
 
         self.shelf_buttons = {}
         
         for shelf_idx in range(self.num_shelves):
+            shelf_grid_row = shelf_idx * 2 + 1
+            shelves_frame.rowconfigure(shelf_grid_row + 1, weight=1)
             shelf_label = tk.Label(
                 shelves_frame,
                 text=self.shelf_names[shelf_idx],
@@ -270,30 +273,61 @@ class OvenManager:
                 fg=self.shelf_label_color,
                 font=('Arial', self.shelf_label_font_size, 'bold')
             )
-            shelf_label.pack(pady=5)
+            shelf_label.grid(
+                row=shelf_grid_row,
+                column=0,
+                pady=(5, 0),
+                sticky='ew'
+            )
             
             shelf_frame = tk.Frame(shelves_frame, bg='lightgray', relief=tk.RAISED, bd=2)
-            shelf_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+            shelf_frame.columnconfigure(0, weight=1)
+            shelf_frame.grid(
+                row=shelf_grid_row + 1,
+                column=0,
+                sticky='nsew',
+                padx=10,
+                pady=(0, 5)
+            )
             
-            # Każda półka ma 2 wiersze (jeden na drugim) i 1 kolumnę
             for row_idx in range(self.num_rows):
+                shelf_frame.rowconfigure(row_idx, weight=1)
                 row_frame = tk.Frame(shelf_frame, bg='lightgray')
-                row_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+                row_frame.rowconfigure(0, weight=1)
+                row_frame.grid(
+                    row=row_idx,
+                    column=0,
+                    sticky='nsew',
+                    padx=5,
+                    pady=5
+                )
                 
                 for col_idx in range(self.num_columns):
-                    # Kontener na JIG (dwa na sobie)
+                    row_frame.columnconfigure(col_idx, weight=1)
                     section_frame = tk.Frame(row_frame, bg='white', relief=tk.SUNKEN, bd=2)
-                    section_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+                    section_frame.grid(
+                        row=0,
+                        column=col_idx,
+                        sticky='nsew',
+                        padx=5,
+                        pady=5
+                    )
                     
-                    # JIG ustawione pionowo (jeden nad drugim)
                     for jig_idx in range(self.jigs_per_section):
+                        section_frame.rowconfigure(jig_idx, weight=1)
                         jig_frame = tk.Frame(
                             section_frame,
                             bg=self.empty_bg,
                             relief=tk.RAISED,
                             bd=2,
                         )
-                        jig_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+                        jig_frame.grid(
+                            row=jig_idx,
+                            column=0,
+                            sticky='nsew',
+                            padx=2,
+                            pady=2
+                        )
                         number_label = tk.Label(
                             jig_frame, bg=self.empty_bg, width=self.jig_width
                         )
