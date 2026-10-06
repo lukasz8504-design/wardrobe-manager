@@ -44,6 +44,16 @@ def is_valid_operator_number(operator_number):
     return len(operator_number) == OPERATOR_NUMBER_LENGTH
 
 
+def calculate_display_font_size(base_size, text_length, available_width, available_height):
+    """Fit one display line within the available JIG position dimensions."""
+    if available_width <= 0 or available_height <= 0:
+        return base_size
+
+    width_limit = max(5, available_width // max(1, int(text_length * 0.65)))
+    height_limit = max(5, available_height // 6)
+    return max(5, min(base_size, width_limit, height_limit))
+
+
 def parse_history_line(line):
     """Parse a history line into its event data, or return None for old/invalid lines."""
     operator_suffix = r"(?:,\s+Operator\s+#(?P<operator>[^,\r\n]+))?"
@@ -303,8 +313,14 @@ class OvenManager:
                 )
                 
                 for col_idx in range(self.num_columns):
-                    row_frame.columnconfigure(col_idx, weight=1)
+                    row_frame.columnconfigure(
+                        col_idx,
+                        weight=1,
+                        uniform=f"shelf_{shelf_idx}_row_{row_idx}"
+                    )
                     section_frame = tk.Frame(row_frame, bg='white', relief=tk.SUNKEN, bd=2)
+                    section_frame.columnconfigure(0, weight=1)
+                    section_frame.grid_propagate(False)
                     section_frame.grid(
                         row=0,
                         column=col_idx,
@@ -321,6 +337,7 @@ class OvenManager:
                             relief=tk.RAISED,
                             bd=2,
                         )
+                        jig_frame.pack_propagate(False)
                         jig_frame.grid(
                             row=jig_idx,
                             column=0,
@@ -329,7 +346,7 @@ class OvenManager:
                             pady=2
                         )
                         number_label = tk.Label(
-                            jig_frame, bg=self.empty_bg, width=self.jig_width
+                            jig_frame, bg=self.empty_bg
                         )
                         processing_label = tk.Label(jig_frame, bg=self.empty_bg)
                         time_label = tk.Label(jig_frame, bg=self.empty_bg)
@@ -351,8 +368,50 @@ class OvenManager:
                             "time": time_label,
                             "status": status_label,
                         }
+                        jig_frame.bind(
+                            '<Configure>',
+                            lambda event, key=pos_key: self.resize_jig_display(key)
+                        )
         
         self.update_display()
+        self.root.bind('<Configure>', self.resize_all_jig_displays)
+
+    def resize_all_jig_displays(self, event=None):
+        """Resize JIG text after the application window changes size."""
+        for pos_key in self.shelf_buttons:
+            self.resize_jig_display(pos_key)
+
+    def resize_jig_display(self, pos_key):
+        """Scale JIG text to fit the current width and height of its position."""
+        display = self.shelf_buttons[pos_key]
+        frame = display["frame"]
+        available_width = frame.winfo_width() - 8
+        available_height = frame.winfo_height() - 8
+        label_sizes = {
+            "number": calculate_display_font_size(
+                self.jig_number_font_size, 10, available_width, available_height
+            ),
+            "processing": calculate_display_font_size(
+                self.processing_text_font_size,
+                len(self.processing_text),
+                available_width,
+                available_height
+            ),
+            "time": calculate_display_font_size(
+                self.remaining_time_font_size, 5, available_width, available_height
+            ),
+            "status": calculate_display_font_size(
+                self.not_removed_text_font_size,
+                len(self.not_removed_text),
+                available_width,
+                available_height
+            ),
+        }
+        for label_name, font_size in label_sizes.items():
+            display[label_name].config(
+                font=('Arial', font_size, 'bold' if label_name != "processing" else 'normal'),
+                wraplength=0
+            )
 
     def validate_operator_number_length(self, value):
         """Prevent entering more than the required number of operator characters."""
@@ -634,26 +693,23 @@ class OvenManager:
                     text=f"#{jig_num}",
                     bg=bg_color,
                     fg=self.jig_number_color,
-                    font=('Arial', self.jig_number_font_size, 'bold')
                 )
                 display["processing"].config(
                     text=self.processing_text,
                     bg=bg_color,
                     fg=self.processing_text_color,
-                    font=('Arial', self.processing_text_font_size)
                 )
                 display["time"].config(
                     text=time_str,
                     bg=bg_color,
                     fg=self.remaining_time_color,
-                    font=('Arial', self.remaining_time_font_size, 'bold')
                 )
                 display["status"].config(
                     text=status_text,
                     bg=bg_color,
                     fg=self.not_removed_text_color,
-                    font=('Arial', self.not_removed_text_font_size, 'bold')
                 )
+                self.resize_jig_display(pos_key)
             else:
                 display = self.shelf_buttons[pos_key]
                 display["frame"].config(bg=self.empty_bg)

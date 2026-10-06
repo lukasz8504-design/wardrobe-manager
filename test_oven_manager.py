@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from oven_manager import (
     OvenManager,
+    calculate_display_font_size,
     calculate_remaining_time,
     is_valid_operator_number,
     parse_history_line,
@@ -17,6 +18,11 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertFalse(is_valid_operator_number("123"))
         self.assertTrue(is_valid_operator_number("1234"))
         self.assertFalse(is_valid_operator_number("12345"))
+
+    def test_jig_display_font_size_fits_available_space(self):
+        self.assertEqual(calculate_display_font_size(10, 5, 200, 120), 10)
+        self.assertLess(calculate_display_font_size(10, 20, 80, 60), 10)
+        self.assertGreaterEqual(calculate_display_font_size(10, 20, 20, 20), 5)
 
     def test_confirming_jig_number_focuses_operator_field(self):
         class OperatorEntry:
