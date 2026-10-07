@@ -37,6 +37,44 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(config.getint("WINDOW", "width"), 1280)
         self.assertEqual(config.getint("WINDOW", "height"), 720)
 
+    def test_added_operator_color_is_saved_to_configuration(self):
+        class Entry:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        class SettingsWindow:
+            def destroy(self):
+                self.destroyed = True
+
+        manager = OvenManager.__new__(OvenManager)
+        manager.config = TomlConfig(
+            {"OPERATORS": {"operator_0001": "#FFFFFF"}}
+        )
+        manager.root = object()
+        saved_config = {}
+        manager.write_config = lambda config: saved_config.update(config)
+        settings_window = SettingsWindow()
+        entries = {
+            ("OPERATORS", "operator_0001"): Entry("#FFFFFF"),
+            ("OPERATORS", "operator_1234"): Entry("#1E90FF"),
+        }
+
+        with patch("oven_manager.messagebox.showinfo"):
+            manager.save_settings(
+                entries,
+                settings_window,
+                {"operator_1234": "#1E90FF"},
+            )
+
+        self.assertEqual(
+            saved_config["OPERATORS"],
+            {"operator_0001": "#FFFFFF", "operator_1234": "#1E90FF"},
+        )
+        self.assertTrue(settings_window.destroyed)
+
     def test_contrast_text_color_matches_operator_background(self):
         self.assertEqual(get_contrast_text_color("#FFFFFF"), "#000000")
         self.assertEqual(get_contrast_text_color("#1E90FF"), "#FFFFFF")

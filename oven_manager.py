@@ -823,8 +823,7 @@ class OvenManager:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         entries = {}
-        operator_number_entry = None
-        operator_color_entry = None
+        pending_operator_colors = {}
         section_names = (
             ["OVEN_TITLE", "SHELF_LABELS"]
             + [
@@ -845,6 +844,15 @@ class OvenManager:
             )
             section_frame.pack(fill=tk.X, padx=12, pady=6)
             section_frame.columnconfigure(1, weight=1)
+            if section == "OPERATORS":
+                self.create_operator_settings(
+                    section_frame,
+                    options,
+                    entries,
+                    pending_operator_colors,
+                )
+                continue
+
             for row, (option, value) in enumerate(options.items()):
                 if section == "OVEN_TITLE" and option == "text":
                     label_text = "Oven name:"
@@ -868,30 +876,6 @@ class OvenManager:
                         text="Color...",
                         command=lambda field=entry: self.choose_color(field)
                     ).grid(row=row, column=2, padx=(8, 0), pady=3)
-            if section == "OPERATORS":
-                add_row = len(options)
-                tk.Label(
-                    section_frame,
-                    text="New operator number:",
-                    bg=self.app_bg,
-                    anchor='w'
-                ).grid(row=add_row, column=0, sticky='w', padx=(0, 8), pady=(10, 3))
-                operator_number_entry = tk.Entry(section_frame)
-                operator_number_entry.grid(row=add_row, column=1, sticky='ew', pady=(10, 3))
-                tk.Label(
-                    section_frame,
-                    text="New operator color:",
-                    bg=self.app_bg,
-                    anchor='w'
-                ).grid(row=add_row + 1, column=0, sticky='w', padx=(0, 8), pady=3)
-                operator_color_entry = tk.Entry(section_frame)
-                operator_color_entry.insert(0, "#FFFFFF")
-                operator_color_entry.grid(row=add_row + 1, column=1, sticky='ew', pady=3)
-                tk.Button(
-                    section_frame,
-                    text="Color...",
-                    command=lambda field=operator_color_entry: self.choose_color(field)
-                ).grid(row=add_row + 1, column=2, padx=(8, 0), pady=3)
 
         actions = tk.Frame(settings_window, bg=self.app_bg)
         actions.pack(fill=tk.X, padx=12, pady=10)
@@ -901,8 +885,7 @@ class OvenManager:
             command=lambda: self.save_settings(
                 entries,
                 settings_window,
-                operator_number_entry,
-                operator_color_entry
+                pending_operator_colors,
             ),
             font=('Arial', 10, 'bold')
         ).pack(side=tk.RIGHT, padx=(8, 0))
@@ -912,6 +895,133 @@ class OvenManager:
             command=settings_window.destroy,
             font=('Arial', 10)
         ).pack(side=tk.RIGHT)
+
+    def create_operator_settings(
+        self, section_frame, operators, entries, pending_operator_colors
+    ):
+        """Create an editable operator list and fields for adding a new operator."""
+        tk.Label(
+            section_frame,
+            text="Operator number",
+            bg=self.app_bg,
+            anchor='w',
+            font=('Arial', 9, 'bold'),
+        ).grid(row=0, column=0, sticky='w', padx=(0, 8), pady=(0, 3))
+        tk.Label(
+            section_frame,
+            text="Color",
+            bg=self.app_bg,
+            anchor='w',
+            font=('Arial', 9, 'bold'),
+        ).grid(row=0, column=1, sticky='w', pady=(0, 3))
+
+        operator_list = tk.Frame(section_frame, bg=self.app_bg)
+        operator_list.grid(row=1, column=0, columnspan=3, sticky='ew')
+        operator_list.columnconfigure(1, weight=1)
+        for row, (option, color) in enumerate(sorted(operators.items())):
+            self.add_operator_row(operator_list, row, option, color, entries)
+
+        add_row = 2
+        tk.Label(
+            section_frame,
+            text="New operator number:",
+            bg=self.app_bg,
+            anchor='w',
+        ).grid(row=add_row, column=0, sticky='w', padx=(0, 8), pady=(10, 3))
+        operator_number_entry = tk.Entry(section_frame)
+        operator_number_entry.grid(
+            row=add_row, column=1, sticky='ew', pady=(10, 3)
+        )
+        tk.Label(
+            section_frame,
+            text="New operator color:",
+            bg=self.app_bg,
+            anchor='w',
+        ).grid(row=add_row + 1, column=0, sticky='w', padx=(0, 8), pady=3)
+        operator_color_entry = tk.Entry(section_frame)
+        operator_color_entry.insert(0, "#FFFFFF")
+        operator_color_entry.grid(row=add_row + 1, column=1, sticky='ew', pady=3)
+        tk.Button(
+            section_frame,
+            text="Color...",
+            command=lambda: self.choose_color(operator_color_entry),
+        ).grid(row=add_row + 1, column=2, padx=(8, 0), pady=3)
+        tk.Button(
+            section_frame,
+            text="Add",
+            command=lambda: self.add_operator_to_settings(
+                operator_list,
+                entries,
+                pending_operator_colors,
+                operator_number_entry,
+                operator_color_entry,
+            ),
+        ).grid(row=add_row + 2, column=1, sticky='e', pady=(3, 0))
+
+    def add_operator_row(self, operator_list, row, option, color, entries):
+        """Append one operator and its editable color to the settings list."""
+        operator_number = option.removeprefix("operator_")
+        tk.Label(
+            operator_list,
+            text=operator_number,
+            bg=self.app_bg,
+            anchor='w',
+        ).grid(row=row, column=0, sticky='w', padx=(0, 8), pady=3)
+        color_entry = tk.Entry(operator_list)
+        color_entry.insert(0, color)
+        color_entry.grid(row=row, column=1, sticky='ew', pady=3)
+        tk.Button(
+            operator_list,
+            text="Color...",
+            command=lambda: self.choose_color(color_entry),
+        ).grid(row=row, column=2, padx=(8, 0), pady=3)
+        entries[("OPERATORS", option)] = color_entry
+
+    def add_operator_to_settings(
+        self,
+        operator_list,
+        entries,
+        pending_operator_colors,
+        operator_number_entry,
+        operator_color_entry,
+    ):
+        """Validate and add a new operator to the settings list."""
+        operator_number = operator_number_entry.get().strip()
+        operator_color = operator_color_entry.get().strip().upper()
+        option = f"operator_{operator_number}"
+        if not is_valid_operator_number(operator_number):
+            messagebox.showerror(
+                "Invalid operator",
+                "New operator number must contain exactly 4 characters.",
+                parent=operator_number_entry.winfo_toplevel(),
+            )
+            return
+        if not re.fullmatch(r'#[0-9A-F]{6}', operator_color):
+            messagebox.showerror(
+                "Invalid operator",
+                "New operator color must use the #RRGGBB format.",
+                parent=operator_number_entry.winfo_toplevel(),
+            )
+            return
+        if ("OPERATORS", option) in entries:
+            messagebox.showerror(
+                "Duplicate operator",
+                "This operator is already on the list. Change its color in the list.",
+                parent=operator_number_entry.winfo_toplevel(),
+            )
+            return
+
+        self.add_operator_row(
+            operator_list,
+            sum(1 for section, _ in entries if section == "OPERATORS"),
+            option,
+            operator_color,
+            entries,
+        )
+        pending_operator_colors[option] = operator_color
+        operator_number_entry.delete(0, tk.END)
+        operator_color_entry.delete(0, tk.END)
+        operator_color_entry.insert(0, "#FFFFFF")
 
     def choose_color(self, entry):
         """Set a configuration color field using the native color picker."""
@@ -924,8 +1034,7 @@ class OvenManager:
         self,
         entries,
         settings_window,
-        operator_number_entry=None,
-        operator_color_entry=None
+        pending_operator_colors=None,
     ):
         """Validate and write graphical settings to config.toml."""
         updated_config = {}
@@ -952,26 +1061,17 @@ class OvenManager:
                         return
                 updated_config[section][option] = value
 
-        if operator_number_entry and operator_number_entry.get().strip():
-            operator_number = operator_number_entry.get().strip()
-            operator_color = operator_color_entry.get().strip().upper()
-            if not is_valid_operator_number(operator_number):
-                messagebox.showerror(
-                    "Invalid setting",
-                    "New operator number must contain exactly 4 characters.",
-                    parent=settings_window
-                )
-                return
-            if not re.fullmatch(r'#[0-9A-F]{6}', operator_color):
-                messagebox.showerror(
-                    "Invalid setting",
-                    "New operator color must use the #RRGGBB format.",
-                    parent=settings_window
-                )
-                return
-            updated_config.setdefault("OPERATORS", {})[
-                f"operator_{operator_number}"
-            ] = operator_color
+        if pending_operator_colors:
+            for option in pending_operator_colors:
+                operator_color = entries[("OPERATORS", option)].get().strip().upper()
+                if not re.fullmatch(r'#[0-9A-F]{6}', operator_color):
+                    messagebox.showerror(
+                        "Invalid setting",
+                        f"OPERATORS.{option} must use the #RRGGBB format.",
+                        parent=settings_window,
+                    )
+                    return
+                updated_config.setdefault("OPERATORS", {})[option] = operator_color
 
         try:
             self.write_config(updated_config)

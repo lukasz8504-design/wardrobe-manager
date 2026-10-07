@@ -66,6 +66,10 @@ Można je również edytować graficznie z poziomu aplikacji przez przycisk **Se
 - `processing_text`, `processing_text_color`, `processing_text_font_size` - Tekst procesu, np. `W trakcie wygrzewania`, oraz jego wygląd.
 - `not_removed_text`, `not_removed_text_color`, `not_removed_text_font_size` - Tekst wygasłego JIG-a oraz jego wygląd.
 
+### [OPERATORS]
+- `operator_1234 = "#1E90FF"` - Numer operatora i przypisany mu kolor JIG-ów.
+- W **Settings** wpisz czteroznakowy numer, wybierz kolor i kliknij **Add**. Lista operatorów wraz z polami kolorów jest zapisywana po kliknięciu **Save settings**.
+
 ### [OVEN_TITLE] i [SHELF_LABELS]
 - `text`, `color`, `font_size` - Nazwa pieca nad wszystkimi półkami oraz jej wygląd.
 - `shelf_1`, `shelf_2`, ... - Indywidualne nazwy półek.
