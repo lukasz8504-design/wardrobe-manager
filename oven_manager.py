@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import colorchooser, messagebox
 import json
 import os
 from datetime import datetime
@@ -33,6 +33,13 @@ class TomlConfig:
         return int(self.data[section][option])
 
 
+def format_toml_value(value):
+    """Return a TOML representation for supported configuration values."""
+    if isinstance(value, int):
+        return str(value)
+    return f'"{str(value).replace("\\", "\\\\").replace("\"", "\\\"")}"'
+
+
 def calculate_remaining_time(insertion_time, initial_minutes, current_time=None):
     """Return the remaining timer seconds based on the insertion timestamp."""
     current_time = current_time or datetime.now()
@@ -52,6 +59,15 @@ def calculate_display_font_size(base_size, text_length, available_width, availab
     width_limit = max(5, available_width // max(1, int(text_length * 0.65)))
     height_limit = max(5, available_height // 6)
     return max(5, min(base_size, width_limit, height_limit))
+
+
+def get_contrast_text_color(background_color):
+    """Return black or white text that remains readable on a HEX background."""
+    red = int(background_color[1:3], 16)
+    green = int(background_color[3:5], 16)
+    blue = int(background_color[5:7], 16)
+    brightness = red * 0.299 + green * 0.587 + blue * 0.114
+    return "#000000" if brightness >= 160 else "#FFFFFF"
 
 
 def parse_history_line(line):
@@ -169,6 +185,10 @@ class OvenManager:
         self.not_removed_text_font_size = self.config.getint(
             'JIG_DISPLAY', 'not_removed_text_font_size'
         )
+        self.operator_colors = {
+            option.removeprefix('operator_'): color
+            for option, color in self.config.data.get('OPERATORS', {}).items()
+        }
         self.oven_name = self.config.get('OVEN_TITLE', 'text')
         self.oven_name_color = self.config.get('OVEN_TITLE', 'color')
         self.oven_name_font_size = self.config.getint('OVEN_TITLE', 'font_size')
@@ -187,15 +207,18 @@ class OvenManager:
         self.empty_sound_file = self.config.get('SOUNDS', 'empty_sound_file')
         self.occupied_sound_file = self.config.get('SOUNDS', 'occupied_sound_file')
         self.expired_sound_file = self.config.get('SOUNDS', 'expired_sound_file')
+        self.window_width = self.config.getint('WINDOW', 'width')
+        self.window_height = self.config.getint('WINDOW', 'height')
         
         # Pliki
         self.history_file = self.get_data_file_path('history_file')
         self.state_file = self.get_data_file_path('state_file')
         
-        # Maksymalizuj okno
-        self.root.state('zoomed')  # Windows
+        self.root.geometry(f'{self.window_width}x{self.window_height}')
         self.root.resizable(True, True)
         self.root.configure(bg=self.app_bg)
+        self.window_resize_job = None
+        self.root.bind('<Configure>', self.schedule_window_size_save, add='+')
         
         # Stan timera - osobny timer dla każdego JIG
         self.jig_timers = {}  # {pos_key: remaining_time_in_seconds}
@@ -246,6 +269,12 @@ class OvenManager:
         self.operator_entry.bind('<Return>', lambda e: self.input_jig())
 
         tk.Button(top_frame, text="Confirm", command=self.input_jig, font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            top_frame,
+            text="Settings",
+            command=self.open_settings,
+            font=('Arial', 10)
+        ).pack(side=tk.LEFT, padx=5)
         tk.Button(
             top_frame,
             text="Clear fields",
@@ -374,7 +403,7 @@ class OvenManager:
                         )
         
         self.update_display()
-        self.root.bind('<Configure>', self.resize_all_jig_displays)
+        self.root.bind('<Configure>', self.resize_all_jig_displays, add='+')
 
     def resize_all_jig_displays(self, event=None):
         """Resize JIG text after the application window changes size."""
@@ -422,6 +451,42 @@ class OvenManager:
         path = Path(self.config.get('FILES', option))
         return str(path if path.is_absolute() else self.application_dir / path)
 
+    def write_config(self, config_data):
+        """Write configuration data to config.toml."""
+        config_path = self.application_dir / 'config.toml'
+        with open(config_path, 'w', encoding='utf-8', newline='\n') as config_file:
+            for section, options in config_data.items():
+                config_file.write(f'[{section}]\n')
+                for option, value in options.items():
+                    config_file.write(f'{option} = {format_toml_value(value)}\n')
+                config_file.write('\n')
+
+    def schedule_window_size_save(self, event):
+        """Save the final user-selected application size after a resize."""
+        if event.widget is not self.root:
+            return
+        if self.window_resize_job is not None:
+            self.root.after_cancel(self.window_resize_job)
+        self.window_resize_job = self.root.after(500, self.save_window_size)
+
+    def save_window_size(self):
+        """Persist the current application width and height to config.toml."""
+        self.window_resize_job = None
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        if width < 400 or height < 300:
+            return
+        updated_config = {
+            section: dict(options) for section, options in self.config.data.items()
+        }
+        updated_config.setdefault('WINDOW', {})['width'] = width
+        updated_config['WINDOW']['height'] = height
+        try:
+            self.write_config(updated_config)
+        except OSError:
+            return
+        self.config = TomlConfig(updated_config)
+
     def focus_operator_entry(self, event=None):
         """Move to the operator-number field after confirming a JIG number."""
         self.operator_entry.focus_set()
@@ -448,15 +513,6 @@ class OvenManager:
             self.current_operator_number = operator_number
             self.jig_entry.delete(0, tk.END)
             self.operator_entry.delete(0, tk.END)
-            imminent_positions = self.get_imminent_expiry_positions()
-            if imminent_positions:
-                positions = ", ".join(imminent_positions)
-                messagebox.showwarning(
-                    "Time almost expired",
-                    "JIG at "
-                    f"{positions} will need to be removed soon. Wait to remove it and "
-                    "insert the new JIG at the same time to avoid losing temperature."
-                )
             self.status_label.config(text=f"JIG #{jig_num} selected. Click a shelf position.", 
                                     bg='lightyellow')
         except ValueError:
@@ -496,11 +552,12 @@ class OvenManager:
             messagebox.showwarning("Warning", "Enter a JIG number first")
             return
 
-        if col == 0 and self.has_jig_in_next_column(shelf, row, jig):
+        source_row = self.get_adjacent_occupied_row(shelf, row, col, jig)
+        if source_row is not None:
             moved_jig = messagebox.askyesno(
                 "JIG move",
-                "Was the JIG from column 2 moved to column 1, with the new JIG "
-                "inserted in column 2?"
+                f"Was the JIG from row {source_row + 1} moved to row {row + 1}, "
+                f"with the new JIG inserted in row {source_row + 1}?"
             )
             if not moved_jig:
                 self.status_label.config(
@@ -508,8 +565,8 @@ class OvenManager:
                     bg='lightyellow'
                 )
                 return
-            self.move_jig_to_previous_column(shelf, row, jig)
-            pos_key = (shelf, row, 1, jig)
+            self.move_jig_to_adjacent_row(shelf, source_row, row, col, jig)
+            pos_key = (shelf, source_row, col, jig)
 
         if pos_key in self.oven_state:
             messagebox.showwarning(
@@ -549,25 +606,22 @@ class OvenManager:
         self.status_label.config(text="Position updated. Enter the next JIG.", bg='lightgreen')
         self.jig_entry.focus_set()
 
-    def get_imminent_expiry_positions(self):
-        """Return descriptions of occupied positions that are near expiry."""
-        positions = []
-        for pos_key, remaining_seconds in self.jig_timers.items():
-            if 0 < remaining_seconds <= self.near_expiry_seconds:
-                positions.append(
-                    f"Shelf {pos_key[0] + 1}, Row {pos_key[1] + 1}, "
-                    f"Column {pos_key[2] + 1}, Position {pos_key[3] + 1}"
-                )
-        return positions
+    def get_adjacent_occupied_row(self, shelf, row, col, jig):
+        """Return the only occupied adjacent row in the same shelf and column."""
+        adjacent_rows = [
+            adjacent_row
+            for adjacent_row in (row - 1, row + 1)
+            if 0 <= adjacent_row < self.num_rows
+            and (shelf, adjacent_row, col, jig) in self.oven_state
+        ]
+        if len(adjacent_rows) == 1:
+            return adjacent_rows[0]
+        return None
 
-    def has_jig_in_next_column(self, shelf, row, jig):
-        """Return whether the matching position in column 2 is occupied."""
-        return (shelf, row, 1, jig) in self.oven_state
-
-    def move_jig_to_previous_column(self, shelf, row, jig):
-        """Move a JIG from column 2 to column 1 without resetting its timer."""
-        source = (shelf, row, 1, jig)
-        destination = (shelf, row, 0, jig)
+    def move_jig_to_adjacent_row(self, shelf, source_row, destination_row, col, jig):
+        """Move a JIG vertically within the same shelf and column."""
+        source = (shelf, source_row, col, jig)
+        destination = (shelf, destination_row, col, jig)
         jig_num = self.oven_state.pop(source)
         self.oven_state[destination] = jig_num
         for collection in (
@@ -665,6 +719,21 @@ class OvenManager:
             return self.orange_bg, self.orange_text
         else:
             return self.normal_bg, self.normal_text
+
+    def get_jig_display_colors(self, pos_key, remaining_seconds):
+        """Return the background and text colors for a JIG and its operator."""
+        operator_color = self.operator_colors.get(self.jig_operator_numbers.get(pos_key))
+        default_background, default_text = self.get_color_for_time(remaining_seconds)
+        if not operator_color:
+            return default_background, default_text
+
+        if remaining_seconds <= self.red_threshold * 60:
+            background = self.red_bg if self.blink_expired else operator_color
+        elif remaining_seconds <= self.orange_threshold * 60:
+            background = self.orange_bg if self.blink_expired else operator_color
+        else:
+            background = operator_color
+        return background, get_contrast_text_color(background)
     
     def format_time(self, seconds):
         """Konwertuje sekundy do formatu MM:SS"""
@@ -680,34 +749,40 @@ class OvenManager:
                 remaining_time = self.jig_timers.get(pos_key, self.initial_time * 60)
                 time_str = self.format_time(remaining_time)
                 if pos_key in self.expired_jigs:
-                    bg_color = (
-                        self.blink_red_bg if self.blink_expired else self.blink_orange_bg
+                    operator_color = self.operator_colors.get(
+                        self.jig_operator_numbers.get(pos_key)
                     )
+                    bg_color = self.red_bg if self.blink_expired else (
+                        operator_color or self.blink_orange_bg
+                    )
+                    text_color = get_contrast_text_color(bg_color)
                     status_text = self.not_removed_text
                 else:
-                    bg_color, text_color = self.get_color_for_time(remaining_time)
+                    bg_color, text_color = self.get_jig_display_colors(
+                        pos_key, remaining_time
+                    )
                     status_text = ""
                 display = self.shelf_buttons[pos_key]
                 display["frame"].config(bg=bg_color)
                 display["number"].config(
                     text=f"#{jig_num}",
                     bg=bg_color,
-                    fg=self.jig_number_color,
+                    fg=text_color,
                 )
                 display["processing"].config(
                     text=self.processing_text,
                     bg=bg_color,
-                    fg=self.processing_text_color,
+                    fg=text_color,
                 )
                 display["time"].config(
                     text=time_str,
                     bg=bg_color,
-                    fg=self.remaining_time_color,
+                    fg=text_color,
                 )
                 display["status"].config(
                     text=status_text,
                     bg=bg_color,
-                    fg=self.not_removed_text_color,
+                    fg=text_color,
                 )
                 self.resize_jig_display(pos_key)
             else:
@@ -727,6 +802,194 @@ class OvenManager:
         )
         self.jig_entry.delete(0, tk.END)
         self.operator_entry.delete(0, tk.END)
+
+    def open_settings(self):
+        """Open a graphical editor for every option in config.toml."""
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("Settings")
+        settings_window.configure(bg=self.app_bg)
+        settings_window.geometry("760x700")
+
+        canvas = tk.Canvas(settings_window, bg=self.app_bg, highlightthickness=0)
+        scrollbar = tk.Scrollbar(settings_window, orient=tk.VERTICAL, command=canvas.yview)
+        content = tk.Frame(canvas, bg=self.app_bg)
+        content.bind(
+            '<Configure>',
+            lambda event: canvas.configure(scrollregion=canvas.bbox('all'))
+        )
+        canvas.create_window((0, 0), window=content, anchor='nw')
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        entries = {}
+        operator_number_entry = None
+        operator_color_entry = None
+        section_names = (
+            ["OVEN_TITLE", "SHELF_LABELS"]
+            + [
+                section
+                for section in self.config.data
+                if section not in {"OVEN_TITLE", "SHELF_LABELS"}
+            ]
+        )
+        for section in section_names:
+            options = self.config.data[section]
+            section_frame = tk.LabelFrame(
+                content,
+                text=section,
+                bg=self.app_bg,
+                padx=10,
+                pady=8,
+                font=('Arial', 10, 'bold')
+            )
+            section_frame.pack(fill=tk.X, padx=12, pady=6)
+            section_frame.columnconfigure(1, weight=1)
+            for row, (option, value) in enumerate(options.items()):
+                if section == "OVEN_TITLE" and option == "text":
+                    label_text = "Oven name:"
+                elif section == "SHELF_LABELS" and option.startswith("shelf_"):
+                    label_text = f"Shelf name {option.removeprefix('shelf_')}:"
+                else:
+                    label_text = option.replace('_', ' ') + ':'
+                tk.Label(
+                    section_frame,
+                    text=label_text,
+                    bg=self.app_bg,
+                    anchor='w'
+                ).grid(row=row, column=0, sticky='w', padx=(0, 8), pady=3)
+                entry = tk.Entry(section_frame)
+                entry.insert(0, str(value))
+                entry.grid(row=row, column=1, sticky='ew', pady=3)
+                entries[(section, option)] = entry
+                if isinstance(value, str) and value.startswith('#'):
+                    tk.Button(
+                        section_frame,
+                        text="Color...",
+                        command=lambda field=entry: self.choose_color(field)
+                    ).grid(row=row, column=2, padx=(8, 0), pady=3)
+            if section == "OPERATORS":
+                add_row = len(options)
+                tk.Label(
+                    section_frame,
+                    text="New operator number:",
+                    bg=self.app_bg,
+                    anchor='w'
+                ).grid(row=add_row, column=0, sticky='w', padx=(0, 8), pady=(10, 3))
+                operator_number_entry = tk.Entry(section_frame)
+                operator_number_entry.grid(row=add_row, column=1, sticky='ew', pady=(10, 3))
+                tk.Label(
+                    section_frame,
+                    text="New operator color:",
+                    bg=self.app_bg,
+                    anchor='w'
+                ).grid(row=add_row + 1, column=0, sticky='w', padx=(0, 8), pady=3)
+                operator_color_entry = tk.Entry(section_frame)
+                operator_color_entry.insert(0, "#FFFFFF")
+                operator_color_entry.grid(row=add_row + 1, column=1, sticky='ew', pady=3)
+                tk.Button(
+                    section_frame,
+                    text="Color...",
+                    command=lambda field=operator_color_entry: self.choose_color(field)
+                ).grid(row=add_row + 1, column=2, padx=(8, 0), pady=3)
+
+        actions = tk.Frame(settings_window, bg=self.app_bg)
+        actions.pack(fill=tk.X, padx=12, pady=10)
+        tk.Button(
+            actions,
+            text="Save settings",
+            command=lambda: self.save_settings(
+                entries,
+                settings_window,
+                operator_number_entry,
+                operator_color_entry
+            ),
+            font=('Arial', 10, 'bold')
+        ).pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(
+            actions,
+            text="Cancel",
+            command=settings_window.destroy,
+            font=('Arial', 10)
+        ).pack(side=tk.RIGHT)
+
+    def choose_color(self, entry):
+        """Set a configuration color field using the native color picker."""
+        color = colorchooser.askcolor(color=entry.get(), parent=entry.winfo_toplevel())[1]
+        if color:
+            entry.delete(0, tk.END)
+            entry.insert(0, color.upper())
+
+    def save_settings(
+        self,
+        entries,
+        settings_window,
+        operator_number_entry=None,
+        operator_color_entry=None
+    ):
+        """Validate and write graphical settings to config.toml."""
+        updated_config = {}
+        for section, options in self.config.data.items():
+            updated_config[section] = {}
+            for option, original_value in options.items():
+                value = entries[(section, option)].get().strip()
+                if isinstance(original_value, int):
+                    try:
+                        value = int(value)
+                    except ValueError:
+                        messagebox.showerror(
+                            "Invalid setting",
+                            f"{section}.{option} must be a whole number.",
+                            parent=settings_window
+                        )
+                        return
+                    if value < 0:
+                        messagebox.showerror(
+                            "Invalid setting",
+                            f"{section}.{option} cannot be negative.",
+                            parent=settings_window
+                        )
+                        return
+                updated_config[section][option] = value
+
+        if operator_number_entry and operator_number_entry.get().strip():
+            operator_number = operator_number_entry.get().strip()
+            operator_color = operator_color_entry.get().strip().upper()
+            if not is_valid_operator_number(operator_number):
+                messagebox.showerror(
+                    "Invalid setting",
+                    "New operator number must contain exactly 4 characters.",
+                    parent=settings_window
+                )
+                return
+            if not re.fullmatch(r'#[0-9A-F]{6}', operator_color):
+                messagebox.showerror(
+                    "Invalid setting",
+                    "New operator color must use the #RRGGBB format.",
+                    parent=settings_window
+                )
+                return
+            updated_config.setdefault("OPERATORS", {})[
+                f"operator_{operator_number}"
+            ] = operator_color
+
+        try:
+            self.write_config(updated_config)
+        except OSError as error:
+            messagebox.showerror(
+                "Save failed",
+                f"Unable to save settings:\n{error}",
+                parent=settings_window
+            )
+            return
+
+        self.config = TomlConfig(updated_config)
+        settings_window.destroy()
+        messagebox.showinfo(
+            "Settings saved",
+            "Settings have been saved. Restart the application to apply them.",
+            parent=self.root
+        )
     
     def save_to_history(
         self, jig_num, shelf, row, col, jig_idx, action="insert", operator_number=None

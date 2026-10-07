@@ -6,8 +6,11 @@ from unittest.mock import patch
 
 from oven_manager import (
     OvenManager,
+    TomlConfig,
     calculate_display_font_size,
     calculate_remaining_time,
+    format_toml_value,
+    get_contrast_text_color,
     is_valid_operator_number,
     parse_history_line,
 )
@@ -23,6 +26,41 @@ class TimerCalculationTests(unittest.TestCase):
         self.assertEqual(calculate_display_font_size(10, 5, 200, 120), 10)
         self.assertLess(calculate_display_font_size(10, 20, 80, 60), 10)
         self.assertGreaterEqual(calculate_display_font_size(10, 20, 20, 20), 5)
+
+    def test_toml_value_formatting_preserves_strings_and_numbers(self):
+        self.assertEqual(format_toml_value(5), "5")
+        self.assertEqual(format_toml_value("#FFFFFF"), '"#FFFFFF"')
+        self.assertEqual(format_toml_value('line "A"'), '"line \\"A\\""')
+
+    def test_window_size_settings_are_read_as_integers(self):
+        config = TomlConfig({"WINDOW": {"width": 1280, "height": 720}})
+        self.assertEqual(config.getint("WINDOW", "width"), 1280)
+        self.assertEqual(config.getint("WINDOW", "height"), 720)
+
+    def test_contrast_text_color_matches_operator_background(self):
+        self.assertEqual(get_contrast_text_color("#FFFFFF"), "#000000")
+        self.assertEqual(get_contrast_text_color("#1E90FF"), "#FFFFFF")
+
+    def test_operator_jig_blinks_with_warning_and_critical_colors(self):
+        pos_key = (0, 0, 0, 0)
+        manager = OvenManager.__new__(OvenManager)
+        manager.operator_colors = {"1234": "#1E90FF"}
+        manager.jig_operator_numbers = {pos_key: "1234"}
+        manager.orange_threshold = 5
+        manager.red_threshold = 1
+        manager.orange_bg = "#FFA500"
+        manager.red_bg = "#FF0000"
+        manager.normal_bg = "#F0F0F0"
+        manager.normal_text = "#000000"
+        manager.orange_text = "#000000"
+        manager.red_text = "#FFFFFF"
+        manager.blink_expired = True
+
+        self.assertEqual(manager.get_jig_display_colors(pos_key, 240)[0], "#FFA500")
+        self.assertEqual(manager.get_jig_display_colors(pos_key, 240)[1], "#000000")
+        self.assertEqual(manager.get_jig_display_colors(pos_key, 30)[0], "#FF0000")
+        manager.blink_expired = False
+        self.assertEqual(manager.get_jig_display_colors(pos_key, 30)[0], "#1E90FF")
 
     def test_confirming_jig_number_focuses_operator_field(self):
         class OperatorEntry:
@@ -159,6 +197,7 @@ class TimerCalculationTests(unittest.TestCase):
         pos_key = (0, 0, 0, 0)
         manager = OvenManager.__new__(OvenManager)
         manager.current_jig = 12
+        manager.num_rows = 2
         manager.oven_state = {pos_key: 7}
         manager.jig_timers = {pos_key: 6000}
         manager.jig_insertion_times = {pos_key: datetime(2026, 1, 1, 12, 0, 0)}
@@ -180,7 +219,7 @@ class TimerCalculationTests(unittest.TestCase):
         with NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as history:
             history_file = history.name
         try:
-            source = (0, 0, 1, 0)
+            source = (0, 1, 0, 0)
             destination = (0, 0, 0, 0)
             inserted_at = datetime(2026, 1, 1, 12, 0, 0)
             manager = OvenManager.__new__(OvenManager)
@@ -193,7 +232,7 @@ class TimerCalculationTests(unittest.TestCase):
             manager.warning_sound_played = set()
             manager.history_file = history_file
 
-            manager.move_jig_to_previous_column(0, 0, 0)
+            manager.move_jig_to_adjacent_row(0, 1, 0, 0, 0)
 
             self.assertEqual(manager.oven_state, {destination: 7})
             self.assertEqual(manager.jig_timers[destination], 30)
@@ -205,14 +244,40 @@ class TimerCalculationTests(unittest.TestCase):
         finally:
             os.unlink(history_file)
 
+    def test_moving_jig_only_changes_its_row_within_the_same_shelf_and_column(self):
+        source = (1, 2, 1, 0)
+        destination = (1, 1, 1, 0)
+        other_column = (1, 2, 2, 0)
+        other_shelf = (0, 2, 1, 0)
+        manager = OvenManager.__new__(OvenManager)
+        manager.oven_state = {
+            source: 7,
+            other_column: 8,
+            other_shelf: 9,
+        }
+        manager.jig_timers = {source: 60}
+        manager.jig_insertion_times = {source: datetime(2026, 1, 1, 12, 0, 0)}
+        manager.jig_operator_numbers = {source: "1234"}
+        manager.timer_threads = {}
+        manager.expired_jigs = set()
+        manager.warning_sound_played = set()
+        manager.history_file = os.devnull
+
+        manager.move_jig_to_adjacent_row(1, 2, 1, 1, 0)
+
+        self.assertIn(destination, manager.oven_state)
+        self.assertNotIn(source, manager.oven_state)
+        self.assertEqual(manager.oven_state[other_column], 8)
+        self.assertEqual(manager.oven_state[other_shelf], 9)
+
     def test_history_restores_original_time_after_jig_position_change(self):
         with NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as history:
             history.write(
-                "[01-01-2026 12:00:00] JIG #7 -> Shelf 1, Row 1, Column 2, "
+                "[01-01-2026 12:00:00] JIG #7 -> Shelf 1, Row 2, Column 1, "
                 "Position 1, Operator #1234\n"
             )
             history.write(
-                "[01-01-2026 12:30:00] JIG #7 ~> Shelf 1, Row 1, Column 2, "
+                "[01-01-2026 12:30:00] JIG #7 ~> Shelf 1, Row 2, Column 1, "
                 "Position 1 -> Shelf 1, Row 1, Column 1, Position 1, Operator #1234\n"
             )
             history_file = history.name
@@ -240,7 +305,7 @@ class TimerCalculationTests(unittest.TestCase):
             )
             self.assertEqual(manager.jig_timers[destination], 2400)
             self.assertEqual(manager.jig_operator_numbers, {destination: "1234"})
-            self.assertNotIn((0, 0, 1, 0), manager.oven_state)
+            self.assertNotIn((0, 1, 0, 0), manager.oven_state)
         finally:
             os.unlink(history_file)
 

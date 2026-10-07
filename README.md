@@ -31,11 +31,16 @@ python3 oven_manager.py
 
 Wszystkie ustawienia znajdują się w pliku `config.toml`:
 
+Można je również edytować graficznie z poziomu aplikacji przez przycisk **Settings**. Po zapisaniu ustawień uruchom aplikację ponownie, aby zastosować zmiany układu i wyglądu.
+
 ### [OVEN]
 - `num_shelves` - Liczba półek w piecu (domyślnie 3)
 - `num_rows` - Liczba rzędów na jednej półce (domyślnie 1)
 - `num_columns` - Liczba kolumn na półce (domyślnie 3)
 - `jigs_per_section` - Liczba JIG w każdej sekcji (domyślnie 2 - jeden nad drugim)
+
+### [WINDOW]
+- `width`, `height` - Szerokość i wysokość okna aplikacji. Aktualny rozmiar okna jest zapisywany automatycznie i przywracany po ponownym uruchomieniu.
 
 ### [TIMER]
 - `initial_time` - Czas początkowy w minutach (domyślnie 100)
@@ -86,13 +91,13 @@ Wszystkie ustawienia znajdują się w pliku `config.toml`:
 
 ## Nowe cechy aplikacji (v3)
 
-✅ **Responsywny interfejs** - Aplikacja automatycznie dostosowuje się do rozdzielczości ekranu  
-✅ **Pełny ekran** - Aplikacja uruchamia się w pełnym ekranie bez scrollowania  
-✅ **JIG ustawione jedno na drugim** - Każda pozycja wyświetla 2 JIG ustawione pionowo (jeden za drugim)  
-✅ **Indywidualne timery** - Każdy JIG ma własny timer liczący niezależnie od innych  
-✅ **Wyświetlanie czasu na każdym JIG** - Timer widoczny bezpośrednio na każdej pozycji z kolorystką  
-✅ **Zmniejszony rozmiar JIG** - Wszystkie półki widoczne bez konieczności scrollowania  
-✅ **Porównanie czasów przy restarcie** - System automatycznie oblicza pozostały czas dla każdego JIG na podstawie czasu włożenia  
+✅ **Responsywny interfejs** - Aplikacja automatycznie dostosowuje się do rozdzielczości ekranu
+✅ **Pełny ekran** - Aplikacja uruchamia się w pełnym ekranie bez scrollowania
+✅ **JIG ustawione jedno na drugim** - Każda pozycja wyświetla 2 JIG ustawione pionowo (jeden za drugim)
+✅ **Indywidualne timery** - Każdy JIG ma własny timer liczący niezależnie od innych
+✅ **Wyświetlanie czasu na każdym JIG** - Timer widoczny bezpośrednio na każdej pozycji z kolorystką
+✅ **Zmniejszony rozmiar JIG** - Wszystkie półki widoczne bez konieczności scrollowania
+✅ **Porównanie czasów przy restarcie** - System automatycznie oblicza pozostały czas dla każdego JIG na podstawie czasu włożenia
 ✅ **Terminologia JIG** - Wszystkie pozycje są określane jako JIG
 
 ## Pliki
