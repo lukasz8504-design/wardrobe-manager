@@ -64,7 +64,7 @@ Można je również edytować graficznie z poziomu aplikacji przez przycisk **Se
 - `jig_number_color`, `jig_number_font_size` - Kolor i rozmiar numeru JIG.
 - `remaining_time_color`, `remaining_time_font_size` - Kolor i rozmiar pozostałego czasu.
 - `processing_text`, `processing_text_color`, `processing_text_font_size` - Tekst procesu, np. `W trakcie wygrzewania`, oraz jego wygląd.
-- `not_removed_text`, `not_removed_text_color`, `not_removed_text_font_size` - Tekst wygasłego JIG-a oraz jego wygląd.
+- `not_removed_text`, `not_removed_text_color`, `not_removed_text_font_size` - Tekst wyświetlany zamiast komunikatu procesu po osiągnięciu `00:00` oraz jego wygląd.
 
 ### [OPERATORS]
 - `operator_1234 = "#1E90FF"` - Numer operatora i przypisany mu kolor JIG-ów.

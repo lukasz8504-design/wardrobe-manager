@@ -100,6 +100,39 @@ class TimerCalculationTests(unittest.TestCase):
         manager.blink_expired = False
         self.assertEqual(manager.get_jig_display_colors(pos_key, 30)[0], "#1E90FF")
 
+    def test_zero_time_replaces_processing_text_with_not_removed_text(self):
+        class Widget:
+            def config(self, **options):
+                self.options = options
+
+        pos_key = (0, 0, 0, 0)
+        display = {
+            name: Widget()
+            for name in ("frame", "number", "processing", "time", "status")
+        }
+        manager = OvenManager.__new__(OvenManager)
+        manager.shelf_buttons = {pos_key: display}
+        manager.oven_state = {pos_key: 17}
+        manager.jig_timers = {pos_key: 0}
+        manager.jig_operator_numbers = {}
+        manager.operator_colors = {}
+        manager.expired_jigs = set()
+        manager.initial_time = 100
+        manager.red_bg = "#FF0000"
+        manager.blink_orange_bg = "#FFA500"
+        manager.blink_expired = True
+        manager.not_removed_text = "WAITING FOR REMOVAL"
+        manager.processing_text = "In process"
+        manager.resize_jig_display = lambda key: None
+
+        manager.update_display()
+
+        self.assertEqual(
+            display["processing"].options["text"], "WAITING FOR REMOVAL"
+        )
+        self.assertEqual(display["time"].options["text"], "00:00")
+        self.assertEqual(display["status"].options["text"], "")
+
     def test_confirming_jig_number_focuses_operator_field(self):
         class OperatorEntry:
             def __init__(self):

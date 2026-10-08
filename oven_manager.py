@@ -416,13 +416,19 @@ class OvenManager:
         frame = display["frame"]
         available_width = frame.winfo_width() - 8
         available_height = frame.winfo_height() - 8
+        remaining_time = self.jig_timers.get(pos_key, self.initial_time * 60)
+        display_text = (
+            self.not_removed_text
+            if pos_key in self.expired_jigs or remaining_time <= 0
+            else self.processing_text
+        )
         label_sizes = {
             "number": calculate_display_font_size(
                 self.jig_number_font_size, 10, available_width, available_height
             ),
             "processing": calculate_display_font_size(
                 self.processing_text_font_size,
-                len(self.processing_text),
+                len(display_text),
                 available_width,
                 available_height
             ),
@@ -748,7 +754,8 @@ class OvenManager:
                 jig_num = self.oven_state[pos_key]
                 remaining_time = self.jig_timers.get(pos_key, self.initial_time * 60)
                 time_str = self.format_time(remaining_time)
-                if pos_key in self.expired_jigs:
+                is_expired = pos_key in self.expired_jigs or remaining_time <= 0
+                if is_expired:
                     operator_color = self.operator_colors.get(
                         self.jig_operator_numbers.get(pos_key)
                     )
@@ -756,11 +763,13 @@ class OvenManager:
                         operator_color or self.blink_orange_bg
                     )
                     text_color = get_contrast_text_color(bg_color)
-                    status_text = self.not_removed_text
+                    processing_text = self.not_removed_text
+                    status_text = ""
                 else:
                     bg_color, text_color = self.get_jig_display_colors(
                         pos_key, remaining_time
                     )
+                    processing_text = self.processing_text
                     status_text = ""
                 display = self.shelf_buttons[pos_key]
                 display["frame"].config(bg=bg_color)
@@ -770,7 +779,7 @@ class OvenManager:
                     fg=text_color,
                 )
                 display["processing"].config(
-                    text=self.processing_text,
+                    text=processing_text,
                     bg=bg_color,
                     fg=text_color,
                 )
@@ -858,6 +867,10 @@ class OvenManager:
                     label_text = "Oven name:"
                 elif section == "SHELF_LABELS" and option.startswith("shelf_"):
                     label_text = f"Shelf name {option.removeprefix('shelf_')}:"
+                elif section == "JIG_DISPLAY" and option == "processing_text":
+                    label_text = "Processing text:"
+                elif section == "JIG_DISPLAY" and option == "not_removed_text":
+                    label_text = "Not removed text:"
                 else:
                     label_text = option.replace('_', ' ') + ':'
                 tk.Label(
